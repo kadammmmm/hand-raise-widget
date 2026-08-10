@@ -1,0 +1,128 @@
+# Deployment Guide
+
+Current live deployment for the Hand Raise widget.
+
+## Live Endpoints
+
+| Component | URL |
+|---|---|
+| Agent widget bundle | https://kadammmmm.github.io/hand-raise-widget/agent.js |
+| Supervisor widget bundle | https://kadammmmm.github.io/hand-raise-widget/supervisor.js |
+| Backend API | https://hand-raise-api.onrender.com/api |
+| Backend health check | https://hand-raise-api.onrender.com/api/health |
+| GitHub repo | https://github.com/kadammmmm/hand-raise-widget |
+| Render dashboard | https://dashboard.render.com/web/srv-d9t3993m8hqs73ctb8ng |
+
+These are the exact URLs already referenced in [docs/agent-layout.json](docs/agent-layout.json) and [docs/supervisor-layout.json](docs/supervisor-layout.json) — no placeholder substitution needed when importing those into Control Hub.
+
+## Widget Hosting (GitHub Pages)
+
+Repo: `kadammmmm/hand-raise-widget` (public — GitHub Pages on a personal account's free plan requires a public repo).
+
+Pages is configured to serve from the `main` branch root (`/`), which is why `agent.js` and `supervisor.js` live at the repo root alongside `dist/` — see [package.json](package.json)'s `postbuild` script.
+
+**To ship a widget change:**
+
+```bash
+npm install          # first time only
+npm run build         # webpack -> dist/agent.js, dist/supervisor.js
+npm run postbuild      # copies both into the repo root
+git add -A
+git commit -m "Update widgets"
+git push
+```
+
+GitHub Pages rebuilds automatically on push to `main`. First build after a push typically takes 30–60 seconds; check status with:
+
+```bash
+gh api repos/kadammmmm/hand-raise-widget/pages/builds/latest
+```
+
+No manual Pages configuration is needed again unless the branch or path changes. If you ever need to recreate it from scratch:
+
+```bash
+gh api -X POST repos/kadammmmm/hand-raise-widget/pages -f "source[branch]=main" -f "source[path]=/"
+```
+
+## Backend Hosting (Render)
+
+Service: `hand-raise-api` (id `srv-d9t3993m8hqs73ctb8ng`), free plan, region `oregon`, connected to `kadammmmm/hand-raise-widget` with root directory `backend`.
+
+| Setting | Value |
+|---|---|
+| Root Directory | `backend` |
+| Build Command | `npm install` |
+| Start Command | `npm start` |
+| Auto-deploy | on push to `main` |
+| Plan | Free |
+
+### Environment Variables
+
+| Variable | Current value | Notes |
+|---|---|---|
+| `PORT` | set automatically by Render | do not override |
+| `CORS_ORIGINS` | *(unset — allows all origins)* | **left open intentionally for now.** Before going to production, set this to the Agent Desktop origin (e.g. `https://desktop.wxcc-us1.cisco.com`) so the API only accepts requests from Control Hub-hosted widgets. |
+| `REQUEST_TTL_HOURS` | `24` | how long resolved requests stay in `/api/hand-raise/history` |
+
+To update env vars via the Render API:
+
+```bash
+curl -X PUT https://api.render.com/v1/services/srv-d9t3993m8hqs73ctb8ng/env-vars \
+  -H "Authorization: Bearer $RENDER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '[{"key":"CORS_ORIGINS","value":"https://desktop.wxcc-us1.cisco.com"},{"key":"REQUEST_TTL_HOURS","value":"24"}]'
+```
+
+Or via the dashboard: Service -> Environment -> Add Environment Variable. Either path triggers a redeploy.
+
+**To ship a backend change:** just push to `main` — Render auto-deploys `backend/` on every commit. To watch a deploy from the CLI:
+
+```bash
+curl -s -H "Authorization: Bearer $RENDER_API_KEY" \
+  "https://api.render.com/v1/services/srv-d9t3993m8hqs73ctb8ng/deploys?limit=1"
+```
+
+### Free-tier caveats
+
+Render's free plan spins the service down after ~15 minutes of inactivity. On the next request it cold-starts (can take 30–60s), and any in-memory hand-raise state and open SSE connections from before the spin-down are lost. `EventSource` on the client reconnects automatically once the service is back up, but agents/supervisors will see a gap in real-time updates during a cold start. Upgrade to a paid plan (or add Redis persistence) before relying on this for production traffic.
+
+## Recreating the Render Service From Scratch
+
+If the service is ever deleted, recreate it with:
+
+```bash
+curl -X POST https://api.render.com/v1/services \
+  -H "Authorization: Bearer $RENDER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "web_service",
+    "name": "hand-raise-api",
+    "ownerId": "tea-d45nm7qdbo4c73823p80",
+    "repo": "https://github.com/kadammmmm/hand-raise-widget",
+    "autoDeploy": "yes",
+    "branch": "main",
+    "rootDir": "backend",
+    "serviceDetails": {
+      "env": "node",
+      "plan": "free",
+      "region": "oregon",
+      "envSpecificDetails": {
+        "buildCommand": "npm install",
+        "startCommand": "npm start"
+      }
+    },
+    "envVars": [
+      {"key": "REQUEST_TTL_HOURS", "value": "24"}
+    ]
+  }'
+```
+
+This will assign a new service id and, if `hand-raise-api` is taken, a different `.onrender.com` subdomain — update the URLs in `docs/*.json`, `README.md`, and this file if that happens.
+
+## Post-Deploy Checklist
+
+- [x] `agent.js` and `supervisor.js` return `200 OK` from GitHub Pages
+- [x] `/api/health` returns `{"status":"ok"}` from Render
+- [ ] `CORS_ORIGINS` locked down to the real Agent Desktop origin before production rollout
+- [ ] `docs/agent-layout.json` and `docs/supervisor-layout.json` imported into Control Hub
+- [ ] End-to-end test: agent raises hand -> supervisor dashboard receives SSE event -> acknowledge/resolve round-trips back to agent
