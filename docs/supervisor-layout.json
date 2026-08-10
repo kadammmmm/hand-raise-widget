@@ -1,0 +1,30 @@
+{
+  "nav": {
+    "label": "Hand Raise",
+    "icon": "icon-raise-hand",
+    "iconType": "momentum",
+    "navigateTo": "hand-raise-page",
+    "align": "top",
+    "isDefaultLandingPage": false
+  },
+  "page": {
+    "id": "hand-raise-page",
+    "widgets": {
+      "hand-raise-area": {
+        "comp": "hand-raise-supervisor",
+        "script": "https://kadammmmm.github.io/hand-raise-widget/supervisor.js",
+        "attributes": {
+          "darkmode": "$STORE.app.darkMode"
+        },
+        "properties": {
+          "backendUrl": "https://hand-raise-api.onrender.com/api",
+          "accessToken": "$STORE.auth.accessToken"
+        }
+      }
+    },
+    "layout": {
+      "areas": [["hand-raise-area"]],
+      "size": { "cols": [1], "rows": [1] }
+    }
+  }
+}

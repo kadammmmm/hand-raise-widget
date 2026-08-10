@@ -1,0 +1,19 @@
+{
+  "name": "hand-raise-widget",
+  "version": "1.0.0",
+  "description": "WxCC Agent Desktop Hand Raise widget (agent + supervisor)",
+  "private": true,
+  "scripts": {
+    "build": "webpack --config webpack.config.cjs",
+    "watch": "webpack --config webpack.config.cjs --watch",
+    "postbuild": "node -e \"require('fs').copyFileSync('dist/agent.js','agent.js');require('fs').copyFileSync('dist/supervisor.js','supervisor.js');\""
+  },
+  "dependencies": {
+    "@wxcc-desktop/sdk": "^1.0.0",
+    "lit": "^3.1.0"
+  },
+  "devDependencies": {
+    "webpack": "^5.90.0",
+    "webpack-cli": "^5.1.4"
+  }
+}

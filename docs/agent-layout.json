@@ -1,0 +1,11 @@
+{
+  "comp": "hand-raise-agent",
+  "script": "https://kadammmmm.github.io/hand-raise-widget/agent.js",
+  "attributes": {
+    "darkmode": "$STORE.app.darkMode"
+  },
+  "properties": {
+    "backendUrl": "https://hand-raise-api.onrender.com/api",
+    "accessToken": "$STORE.auth.accessToken"
+  }
+}
