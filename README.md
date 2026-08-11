@@ -55,6 +55,24 @@ The first version of `hand-raise-supervisor-alert` used the same floating overla
 
 Rather than chase a fix for a CSS mechanism whose exact host-page cause we can't fully inspect or control, `hand-raise-supervisor-alert` now avoids `position: fixed`/`absolute` entirely. The trigger button expands **in normal document flow** — the same rendering path that already reliably showed the badge count in the header — to show the oldest active request's summary and Acknowledge/Resolve buttons directly. No viewport math, no containing-block risk, nothing to escape. If you're adding new floating UI anywhere in this codebase, know that this failure mode is real in this specific host shell and plan accordingly — inline expansion first, `position: fixed` overlay only if the content truly can't fit inline (as with the agent's raise form, which has more fields than an icon can show).
 
+## Branding
+
+Colors and typography follow the [Bucher + Suter brand book](https://brandbook.bucher-suter.com/) ([colors](https://brandbook.bucher-suter.com/color/), [typography](https://brandbook.bucher-suter.com/typography/)), defined once in `src/shared/styles.js` as CSS custom properties:
+
+| Variable | Brand color | Hex | Used for |
+|---|---|---|---|
+| `--primary-color` | Blue 600 | `#4f6fda` | Primary buttons, reason badges, live pill dot |
+| `--success-color` | Turquoise 600 | `#00dadf` | Resolved status, LIVE pill |
+| `--warning-color` | Yellow 600 | `#ffbc2a` | Acknowledged status |
+| `--danger-color` | Red 600 | `#ff5c5f` | Active/urgent hand raise, SLA escalation |
+| `--accent-orange` | Orange 600 | `#ff8a30` | "powered by Bucher + Suter" link |
+
+The brand book doesn't define semantic CTA/warning/error usage itself (it's led by "gradients and white" as the primary visual language, with solid colors as sparing accents) — the mapping above is our own choice, applying the brand's accent tiers to the status semantics this widget already needed.
+
+Typography: **Instrument Sans**, the brand's stated "primary operational font," loaded via `@import` in `sharedStyles` from Google Fonts so the widget doesn't depend on the host page linking it. GT Planar (the brand's marketing typeface) isn't used — it's licensed for marketing touchpoints, not freely embeddable in a bundled web component. Tahoma/Arial/Helvetica remain in the fallback stack, matching the brand book's own email-safe fallback guidance.
+
+Brand name is written as "Bucher + Suter" (spaced, capitalized) per the [logo guidelines](https://brandbook.bucher-suter.com/logos/) — not "bucher+suter" or "b+s" in user-facing text (short internal references to "b+s" in code comments/docs are fine, just not what agents/supervisors see on screen).
+
 ## Build & Deploy (widgets)
 
 ```bash

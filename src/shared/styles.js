@@ -1,21 +1,31 @@
 import { css } from 'lit';
 
+// Bucher + Suter brand book (https://brandbook.bucher-suter.com/color/,
+// /typography/): Blue 600/Turquoise 600/Yellow 600/Red 600 are the brand's
+// own accent tiers, mapped here to our semantic roles since the brand book
+// doesn't define CTA/warning/error usage itself. Instrument Sans is the
+// brand's primary operational/UI font (GT Planar is marketing-only and not
+// freely licensable for a bundled widget); loaded via @font-face so the
+// widget doesn't depend on the host page linking it.
 export const sharedStyles = css`
+  @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&display=swap');
+
   :host {
-    --primary-color: #00bceb;
-    --success-color: #28a745;
-    --warning-color: #f59e0b;
-    --danger-color: #dc3545;
-    --hand-raise-active: #dc3545;
-    --hand-raise-idle: #6c757d;
+    --primary-color: #4f6fda;
+    --success-color: #00dadf;
+    --warning-color: #ffbc2a;
+    --danger-color: #ff5c5f;
+    --accent-orange: #ff8a30;
+    --hand-raise-active: #ff5c5f;
+    --hand-raise-idle: #8a8f98;
 
     --bg-color: #ffffff;
-    --surface-color: #f7f8fa;
-    --text-color: #1c1e21;
-    --text-muted: #6c757d;
-    --border-color: #e1e4e8;
+    --surface-color: #f7f7f7;
+    --text-color: #000000;
+    --text-muted: #5f6368;
+    --border-color: #e8e8e8;
 
-    font-family: 'CiscoSansTT', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Tahoma, Arial, Helvetica, sans-serif;
     display: block;
     color: var(--text-color);
     background: var(--bg-color);
@@ -52,7 +62,7 @@ export const sharedStyles = css`
 
   .header-subtitle {
     font-size: 11px;
-    color: #ff8800;
+    color: var(--accent-orange);
     text-decoration: none;
   }
 
@@ -170,9 +180,9 @@ export const sharedStyles = css`
   }
 
   @keyframes pulse-ring {
-    0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.5); }
-    70% { box-shadow: 0 0 0 12px rgba(220, 53, 69, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+    0% { box-shadow: 0 0 0 0 rgba(255, 92, 95, 0.5); }
+    70% { box-shadow: 0 0 0 12px rgba(255, 92, 95, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 92, 95, 0); }
   }
 
   /* === Header trigger + floating overlay panel ===

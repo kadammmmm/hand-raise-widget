@@ -22,7 +22,7 @@ const alertStyles = css`
     padding: 0 12px 0 10px;
     gap: 10px;
     border-radius: 18px;
-    background: rgba(220, 53, 69, 0.12);
+    background: rgba(255, 92, 95, 0.12);
     border: 1px solid transparent;
   }
 

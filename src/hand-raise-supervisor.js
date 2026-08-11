@@ -153,7 +153,7 @@ class HandRaiseSupervisor extends LitElement {
       font-size: 11px;
       padding: 1px 8px;
       border-radius: 10px;
-      background: rgba(0, 188, 235, 0.15);
+      background: rgba(79, 111, 218, 0.15);
       color: var(--primary-color);
       font-weight: 600;
     }
@@ -523,7 +523,7 @@ class HandRaiseSupervisor extends LitElement {
               ? html`<span class="nav-badge">${this._activeRequests.length}</span>`
               : ''}
           </p>
-          <a class="header-subtitle" href="#" @click=${(e) => e.preventDefault()}>powered by bucher+suter</a>
+          <a class="header-subtitle" href="#" @click=${(e) => e.preventDefault()}>powered by Bucher + Suter</a>
         </div>
         <span class="live-pill"><span class="dot"></span>${this._connected ? 'LIVE' : 'OFFLINE'}</span>
       </div>
