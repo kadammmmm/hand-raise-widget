@@ -5,8 +5,8 @@ Custom Webex Contact Center (WxCC) Agent Desktop widget set that lets agents req
 Three widgets, three jobs:
 
 - **`hand-raise-agent`** (advancedHeader only) — a compact hand icon always visible in the header strip. Click to raise (reason + optional note) or lower. No page, no panel tab — raising a hand is the entire feature from the agent's side.
-- **`hand-raise-supervisor-alert`** (advancedHeader) — the supervisor's always-visible badge + pop-up alert, modeled on NICE inContact's "agent requests, supervisor accepts via pop-up" pattern. Shows a live count, fires a browser notification + chime + toast on every new request, and lets a supervisor Acknowledge/Resolve inline without leaving whatever they're looking at.
-- **`hand-raise-supervisor`** (Navigation Panel page) — the full dashboard for everything that doesn't fit in a header pop-up: requests grouped by team, a live waiting/acknowledged/total summary row, reason/channel filters, and 24h history.
+- **`hand-raise-supervisor-alert`** (advancedHeader) — the supervisor's always-visible hand icon. Idle, it's just a compact "Hand Raise" button. The moment a request comes in, the button itself expands inline to show the oldest request's agent/reason plus Acknowledge/Resolve buttons, alongside a browser notification + chime. No floating pop-up — see "Why no pop-up" below for why that was a deliberate choice, not an oversight.
+- **`hand-raise-supervisor`** (Navigation Panel page) — the full dashboard for everything that doesn't fit in a compact header control: requests grouped by team, a live waiting/acknowledged/total summary row, reason/channel filters, and 24h history.
 
 Real-time updates flow both ways over Server-Sent Events (SSE); no polling. Because header widgets stay mounted across every desktop view (unlike a Nav Panel page, which only mounts while visited), their SSE connections and notification listeners stay alive continuously.
 
@@ -16,12 +16,12 @@ Real-time updates flow both ways over Server-Sent Events (SSE); no polling. Beca
 hand-raise-widget/
 ├── src/
 │   ├── hand-raise-agent.js              # Agent header widget (raise/lower only)
-│   ├── hand-raise-supervisor-alert.js   # Supervisor header widget (badge + pop-up)
+│   ├── hand-raise-supervisor-alert.js   # Supervisor header widget (inline-expanding alert)
 │   ├── hand-raise-supervisor.js         # Supervisor Nav Panel dashboard
 │   └── shared/
 │       ├── constants.js                 # Reason categories, status enums, event names
 │       ├── sse-client.js                # Shared SSE connection helper
-│       ├── overlay.js                   # Fixed-position panel anchoring helper
+│       ├── overlay.js                   # Fixed-position panel anchoring/portal helper (used by hand-raise-agent only)
 │       └── styles.js                    # Shared CSS (b+s branding, dark mode, overlay/toast)
 ├── backend/
 │   ├── server.js                        # Express API + SSE
@@ -43,9 +43,17 @@ hand-raise-widget/
 
 ## Why advancedHeader for two of the three
 
-`advancedHeader` widgets aren't limited to the visible strip height — they can expand into a `position: fixed` overlay panel anchored to the trigger via `getBoundingClientRect` (see `src/shared/overlay.js`), the same technique used in [wxcc-queue-widget](https://github.com/kadammmmm/wxcc-queue-widget)'s click-to-expand queue panels. That's what both `hand-raise-agent` and `hand-raise-supervisor-alert` do: a small always-visible control that pops open a full interactive panel on click, backed by a transparent backdrop that closes it on an outside click.
+`advancedHeader` widgets aren't limited to the visible strip height. `hand-raise-agent`'s click-to-raise form expands into a `position: fixed` overlay panel anchored to the trigger via `getBoundingClientRect` (see `src/shared/overlay.js`), the same technique used in [wxcc-queue-widget](https://github.com/kadammmmm/wxcc-queue-widget)'s click-to-expand queue panels — a small always-visible control that pops open a full interactive panel on click, backed by a transparent backdrop that closes it on an outside click.
 
-The supervisor still gets a full Nav Panel page (`hand-raise-supervisor`) because some things genuinely don't fit a header pop-up well: team/reason/channel filters, a 24h audit history, and a team-grouped view of everything in flight at once. The header alert widget is for "notice and triage right now"; the Nav Panel page is for "review and manage."
+`hand-raise-supervisor-alert` deliberately does **not** use that pattern — see "Why no pop-up for the supervisor alert" below.
+
+The supervisor still gets a full Nav Panel page (`hand-raise-supervisor`) because some things genuinely don't fit a compact header control well: team/reason/channel filters, a 24h audit history, and a team-grouped view of everything in flight at once. The header alert widget is for "notice and triage the single oldest request right now"; the Nav Panel page is for "review and manage everything."
+
+## Why no pop-up for the supervisor alert
+
+The first version of `hand-raise-supervisor-alert` used the same floating overlay + toast pattern as the agent widget. In the live Supervisor Agent Desktop, that popup rendered almost entirely off-screen. The cause is a `position: fixed` containing-block issue: `fixed` is only relative to the true browser viewport if no ancestor establishes a new containing block (`transform`, `filter`, `perspective`, or CSS `contain`) — and the Supervisor Agent Desktop's header chrome apparently does. Portaling the overlay to a `<div>` appended directly to `document.body` (still in `src/shared/overlay.js`, still used by `hand-raise-agent`) didn't fully resolve it either, which points to the offending ancestor sitting even further up the tree (e.g. on `<body>` itself) than a body-level portal can escape.
+
+Rather than chase a fix for a CSS mechanism whose exact host-page cause we can't fully inspect or control, `hand-raise-supervisor-alert` now avoids `position: fixed`/`absolute` entirely. The trigger button expands **in normal document flow** — the same rendering path that already reliably showed the badge count in the header — to show the oldest active request's summary and Acknowledge/Resolve buttons directly. No viewport math, no containing-block risk, nothing to escape. If you're adding new floating UI anywhere in this codebase, know that this failure mode is real in this specific host shell and plan accordingly — inline expansion first, `position: fixed` overlay only if the content truly can't fit inline (as with the agent's raise form, which has more fields than an icon can show).
 
 ## Build & Deploy (widgets)
 
@@ -141,14 +149,14 @@ const supervisorWidget = findWidget('hand-raise-supervisor');
 5. Invalid layout JSON — validate before importing to Control Hub.
 6. `EventSource` cannot send custom headers — pass the access token via query string, not a header.
 7. Widgets must tolerate the SDK's agent/supervisor data not being ready yet on init.
-8. Browser notification permission must be requested from a user gesture (the header trigger's click), not on page load — both header widgets request it lazily on first click.
-9. **Confirmed in the live Supervisor Agent Desktop**: `position: fixed` overlays/toasts rendered from inside the widget's own shadow DOM landed far outside the visible viewport — some ancestor in the desktop shell's header chrome establishes a CSS containing block (via `transform`, `filter`, `perspective`, or `contain`), which silently re-anchors descendant `fixed` elements to that ancestor's box instead of the real viewport. Fix: `src/shared/overlay.js` now renders overlay panels and toasts into a separate shadow-rooted `<div>` appended directly to `document.body` (see `createPortal`/`renderPortal`), which always positions relative to the true viewport regardless of what the host page does upstream. Both `hand-raise-agent` and `hand-raise-supervisor-alert` use this; keep any future floating UI on the same pattern rather than rendering it inline in the component's own shadow tree.
+8. Browser notification permission must be requested from a user gesture, not on page load — `hand-raise-supervisor-alert` requests it lazily on the trigger's first click, while it's still idle.
+9. **`position: fixed` is unreliable in this host shell** — confirmed twice in the live Supervisor Agent Desktop, first rendering inline in the widget's own shadow DOM, then again after portaling to `document.body`. Some ancestor (possibly `<body>` itself) establishes a CSS containing block that `fixed` positioning can't escape even via a body-level portal. `hand-raise-agent`'s raise-form overlay still uses `position: fixed` + portal (`src/shared/overlay.js`) since it happened to render usably there; `hand-raise-supervisor-alert` was rewritten to avoid the mechanism entirely (inline expansion instead) once it proved unreliable. See "Why no pop-up for the supervisor alert" above before adding new floating UI anywhere in this codebase.
 
 ## Feature Gaps Considered (vs. NICE inContact Supervisor tools)
 
 Cross-checked against [inContact's Supervisor Overview](https://help.incontact.com/Content/Supervisor/SupervisorOverview.htm):
 
-- **Pop-up accept flow** — inContact surfaces agent consult/conference requests as a pop-up the supervisor accepts. `hand-raise-supervisor-alert`'s toast + inline Acknowledge button is the equivalent for hand-raise requests.
+- **Pop-up accept flow** — inContact surfaces agent consult/conference requests as a pop-up the supervisor accepts. `hand-raise-supervisor-alert`'s inline-expanding Acknowledge button is the equivalent for hand-raise requests (implemented as an inline expansion rather than a literal floating pop-up — see "Why no pop-up" above).
 - **Teams View (agents grouped by team)** — added as team-grouped sections in the Nav Panel's active-requests list.
 - **Real-time snapshot metrics** — added as a waiting/acknowledged/total summary row above the Nav Panel's card list.
 - **Discreetly listen / coach / barge / take over calls** — these are native WxCC supervisor capabilities, not something a third-party widget can safely invoke on an arbitrary interaction via the public SDK. Instead, each request row exposes the `interactionId` with a one-click copy action so a supervisor can paste it into the native Team Performance / monitoring tools. Treat deeper integration here as an open item requiring SDK verification, not something this widget currently automates.
