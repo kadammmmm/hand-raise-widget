@@ -94,6 +94,8 @@ Three separate imports in Control Hub -> Desktop Layouts:
 
 Update the `script` and `backendUrl` values in each snippet to match your deployed URLs before importing. The exact nesting of the `advancedHeader` array can vary slightly by WxCC version — verify against your tenant's layout editor if the import is rejected.
 
+Full step-by-step Control Hub walkthrough (where to click, how to merge into an existing layout, verification, rollback): see [DEPLOYMENT.md's Desktop Layout Configuration section](DEPLOYMENT.md#desktop-layout-configuration-control-hub).
+
 ## REST API
 
 ```
