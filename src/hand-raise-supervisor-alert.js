@@ -3,13 +3,95 @@ import { Desktop } from '@wxcc-desktop/sdk';
 import { sharedStyles } from './shared/styles.js';
 import { HAND_RAISE_REASONS, CHANNEL_ICONS } from './shared/constants.js';
 import { connectSSE } from './shared/sse-client.js';
-import { anchorBelow } from './shared/overlay.js';
+import { anchorBelow, createPortal, renderPortal, destroyPortal } from './shared/overlay.js';
 
 Desktop.config.init();
 window.handRaiseService = Desktop.agentContact?.SERVICE;
 
 const REASON_LABELS = Object.fromEntries(HAND_RAISE_REASONS.map((r) => [r.value, r.label]));
 const TOAST_AUTO_DISMISS_MS = 8000;
+
+const alertStyles = css`
+  :host {
+    display: inline-block;
+  }
+
+  .toast-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .toast-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .toast button {
+    font-size: 11px;
+    padding: 4px 10px;
+  }
+
+  .request-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--surface-color);
+  }
+
+  .request-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .agent-name {
+    font-weight: 600;
+    font-size: 12px;
+  }
+
+  .reason-badge {
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: rgba(0, 188, 235, 0.15);
+    color: var(--primary-color);
+    font-weight: 600;
+  }
+
+  .note-text {
+    font-size: 11px;
+    color: var(--text-color);
+  }
+
+  .meta-row {
+    display: flex;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  .row-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  .row-actions button {
+    font-size: 11px;
+    padding: 4px 10px;
+  }
+
+  .empty-state {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 4px 0;
+  }
+`;
 
 // advancedHeader widget: always-visible badge + pop-up alert for supervisors,
 // mirroring inContact's "agent requests -> supervisor accepts via pop-up"
@@ -31,87 +113,7 @@ class HandRaiseSupervisorAlert extends LitElement {
     _now: { state: true }
   };
 
-  static styles = [sharedStyles, css`
-    :host {
-      display: inline-block;
-    }
-
-    .toast-stack {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .toast-actions {
-      display: flex;
-      gap: 6px;
-      margin-top: 8px;
-    }
-
-    .toast button {
-      font-size: 11px;
-      padding: 4px 10px;
-    }
-
-    .request-row {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      padding: 10px;
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      background: var(--surface-color);
-    }
-
-    .request-top {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .agent-name {
-      font-weight: 600;
-      font-size: 12px;
-    }
-
-    .reason-badge {
-      font-size: 10px;
-      padding: 1px 7px;
-      border-radius: 10px;
-      background: rgba(0, 188, 235, 0.15);
-      color: var(--primary-color);
-      font-weight: 600;
-    }
-
-    .note-text {
-      font-size: 11px;
-      color: var(--text-color);
-    }
-
-    .meta-row {
-      display: flex;
-      gap: 8px;
-      font-size: 10px;
-      color: var(--text-muted);
-    }
-
-    .row-actions {
-      display: flex;
-      gap: 6px;
-    }
-
-    .row-actions button {
-      font-size: 11px;
-      padding: 4px 10px;
-    }
-
-    .empty-state {
-      font-size: 12px;
-      color: var(--text-muted);
-      padding: 4px 0;
-    }
-  `];
+  static styles = [sharedStyles, alertStyles];
 
   constructor() {
     super();
@@ -128,6 +130,7 @@ class HandRaiseSupervisorAlert extends LitElement {
     this._eventSource = null;
     this._tickHandle = null;
     this._audioCtx = null;
+    this._portal = null;
     this._onDocClick = (e) => this._handleDocumentClick(e);
   }
 
@@ -136,6 +139,7 @@ class HandRaiseSupervisorAlert extends LitElement {
     this._init();
     document.addEventListener('click', this._onDocClick, true);
     this._tickHandle = setInterval(() => (this._now = Date.now()), 1000);
+    this._portal = createPortal([sharedStyles.styleSheet, alertStyles.styleSheet]);
   }
 
   disconnectedCallback() {
@@ -143,6 +147,16 @@ class HandRaiseSupervisorAlert extends LitElement {
     this._eventSource?.close();
     document.removeEventListener('click', this._onDocClick, true);
     if (this._tickHandle) clearInterval(this._tickHandle);
+    destroyPortal(this._portal?.host);
+  }
+
+  updated() {
+    if (!this._portal) return;
+    this._portal.host.setAttribute('darkmode', this.darkmode);
+    renderPortal(
+      html`${this._renderToasts()}${this._panelOpen ? this._renderPanel() : ''}`,
+      this._portal.shadow
+    );
   }
 
   async _init() {
@@ -240,7 +254,7 @@ class HandRaiseSupervisorAlert extends LitElement {
   _handleDocumentClick(e) {
     if (!this._panelOpen) return;
     const path = e.composedPath();
-    if (!path.includes(this)) this._panelOpen = false;
+    if (!path.includes(this) && !path.includes(this._portal?.host)) this._panelOpen = false;
   }
 
   _toggleTrigger(e) {
@@ -304,9 +318,6 @@ class HandRaiseSupervisorAlert extends LitElement {
         </span>
         <span class="label">Hand Raise</span>
       </button>
-
-      ${this._renderToasts()}
-      ${this._panelOpen ? this._renderPanel() : ''}
     `;
   }
 

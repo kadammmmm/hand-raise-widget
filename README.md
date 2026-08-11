@@ -142,7 +142,7 @@ const supervisorWidget = findWidget('hand-raise-supervisor');
 6. `EventSource` cannot send custom headers — pass the access token via query string, not a header.
 7. Widgets must tolerate the SDK's agent/supervisor data not being ready yet on init.
 8. Browser notification permission must be requested from a user gesture (the header trigger's click), not on page load — both header widgets request it lazily on first click.
-9. Header overlay panels use `position: fixed` + high `z-index` — if a future host page's CSP or shadow-DOM containment blocks fixed positioning from escaping an ancestor, the panel will render clipped; the `wxcc-queue-widget` reference confirms this works in the standard WxCC Agent Desktop shell.
+9. **Confirmed in the live Supervisor Agent Desktop**: `position: fixed` overlays/toasts rendered from inside the widget's own shadow DOM landed far outside the visible viewport — some ancestor in the desktop shell's header chrome establishes a CSS containing block (via `transform`, `filter`, `perspective`, or `contain`), which silently re-anchors descendant `fixed` elements to that ancestor's box instead of the real viewport. Fix: `src/shared/overlay.js` now renders overlay panels and toasts into a separate shadow-rooted `<div>` appended directly to `document.body` (see `createPortal`/`renderPortal`), which always positions relative to the true viewport regardless of what the host page does upstream. Both `hand-raise-agent` and `hand-raise-supervisor-alert` use this; keep any future floating UI on the same pattern rather than rendering it inline in the component's own shadow tree.
 
 ## Feature Gaps Considered (vs. NICE inContact Supervisor tools)
 

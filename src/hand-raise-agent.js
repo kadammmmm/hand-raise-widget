@@ -3,10 +3,58 @@ import { Desktop } from '@wxcc-desktop/sdk';
 import { sharedStyles } from './shared/styles.js';
 import { HAND_RAISE_REASONS, NOTE_MAX_LENGTH, HAND_RAISE_STATUS } from './shared/constants.js';
 import { connectSSE } from './shared/sse-client.js';
-import { anchorBelow } from './shared/overlay.js';
+import { anchorBelow, createPortal, renderPortal, destroyPortal } from './shared/overlay.js';
 
 Desktop.config.init();
 window.handRaiseService = Desktop.agentContact?.SERVICE;
+
+const agentStyles = css`
+  :host {
+    display: inline-block;
+  }
+
+  .timer-inline {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+  }
+
+  .label {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  label.field-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .char-count {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-align: right;
+  }
+
+  .panel-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .notification {
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    background: var(--surface-color);
+    border-left: 3px solid var(--primary-color);
+  }
+
+  .error {
+    color: var(--danger-color);
+    font-size: 12px;
+  }
+`;
 
 // advancedHeader-only widget: a compact hand icon that lives in the
 // always-visible header strip and expands into a floating panel on click.
@@ -31,53 +79,7 @@ class HandRaiseAgent extends LitElement {
     _error: { state: true }
   };
 
-  static styles = [sharedStyles, css`
-    :host {
-      display: inline-block;
-    }
-
-    .timer-inline {
-      font-size: 11px;
-      font-variant-numeric: tabular-nums;
-      color: var(--text-muted);
-    }
-
-    .label {
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    label.field-label {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-muted);
-    }
-
-    .char-count {
-      font-size: 10px;
-      color: var(--text-muted);
-      text-align: right;
-    }
-
-    .panel-actions {
-      display: flex;
-      gap: 8px;
-      justify-content: flex-end;
-    }
-
-    .notification {
-      padding: 8px 10px;
-      border-radius: 8px;
-      font-size: 12px;
-      background: var(--surface-color);
-      border-left: 3px solid var(--primary-color);
-    }
-
-    .error {
-      color: var(--danger-color);
-      font-size: 12px;
-    }
-  `];
+  static styles = [sharedStyles, agentStyles];
 
   constructor() {
     super();
@@ -98,6 +100,7 @@ class HandRaiseAgent extends LitElement {
     this._error = '';
     this._timerHandle = null;
     this._eventSource = null;
+    this._portal = null;
     this._onDocClick = (e) => this._handleDocumentClick(e);
   }
 
@@ -105,6 +108,7 @@ class HandRaiseAgent extends LitElement {
     super.connectedCallback();
     this._initAgentContext();
     document.addEventListener('click', this._onDocClick, true);
+    this._portal = createPortal([sharedStyles.styleSheet, agentStyles.styleSheet]);
   }
 
   disconnectedCallback() {
@@ -112,6 +116,13 @@ class HandRaiseAgent extends LitElement {
     this._stopTimer();
     this._eventSource?.close();
     document.removeEventListener('click', this._onDocClick, true);
+    destroyPortal(this._portal?.host);
+  }
+
+  updated() {
+    if (!this._portal) return;
+    this._portal.host.setAttribute('darkmode', this.darkmode);
+    renderPortal(this._panelOpen ? this._renderPanel(this._status !== HAND_RAISE_STATUS.RESOLVED) : html``, this._portal.shadow);
   }
 
   async _initAgentContext() {
@@ -158,7 +169,7 @@ class HandRaiseAgent extends LitElement {
   _handleDocumentClick(e) {
     if (!this._panelOpen) return;
     const path = e.composedPath();
-    if (!path.includes(this)) {
+    if (!path.includes(this) && !path.includes(this._portal?.host)) {
       this._panelOpen = false;
     }
   }
@@ -285,8 +296,6 @@ class HandRaiseAgent extends LitElement {
         <span class="label">${isRaised ? 'Hand Raised' : 'Raise Hand'}</span>
         ${isRaised ? html`<span class="timer-inline">${this._formatElapsed()}</span>` : ''}
       </button>
-
-      ${this._panelOpen ? this._renderPanel(isRaised) : ''}
     `;
   }
 
