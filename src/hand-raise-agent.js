@@ -330,11 +330,18 @@ class HandRaiseAgent extends LitElement {
     this._status = HAND_RAISE_STATUS.RESOLVED;
     this._requestId = null;
     this._acknowledgedBy = null;
+    this._lastMessage = '';
     this._messages = [];
     this._unreadCount = 0;
     this._panelOpen = false;
     this._stopTimer();
     this._elapsedSeconds = 0;
+    // Clear the raise form itself — without this, reopening the panel to
+    // raise a new hand pre-fills reason/priority/note from whatever was
+    // submitted last time, which reads as stale data from the old request.
+    this._reason = HAND_RAISE_REASONS[0].value;
+    this._priority = DEFAULT_PRIORITY;
+    this._note = '';
   }
 
   _startTimer() {
