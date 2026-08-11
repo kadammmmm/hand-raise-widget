@@ -191,6 +191,66 @@ class HandRaiseSupervisor extends LitElement {
       font-size: 10px;
       font-weight: 700;
     }
+
+    .summary-row {
+      display: flex;
+      gap: 16px;
+      padding: 0 16px 10px;
+      flex-wrap: wrap;
+    }
+
+    .summary-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 72px;
+    }
+
+    .summary-stat .value {
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .summary-stat .value.danger { color: var(--danger-color); }
+    .summary-stat .value.warning { color: var(--warning-color); }
+
+    .summary-stat .label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .team-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .team-group-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      padding-top: 4px;
+    }
+
+    .team-group-header .count {
+      background: var(--surface-color);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 0 7px;
+      font-weight: 700;
+    }
+
+    .interaction-copy {
+      color: var(--primary-color);
+      text-decoration: none;
+      margin-left: 4px;
+    }
   `];
 
   constructor() {
@@ -385,6 +445,26 @@ class HandRaiseSupervisor extends LitElement {
       .sort((a, b) => new Date(a.raisedAt) - new Date(b.raisedAt));
   }
 
+  _groupedByTeam(requests) {
+    const groups = new Map();
+    for (const r of requests) {
+      const key = r.teamId || r.teamName || 'unassigned';
+      if (!groups.has(key)) groups.set(key, { teamName: r.teamName || 'Unassigned', requests: [] });
+      groups.get(key).requests.push(r);
+    }
+    return Array.from(groups.values()).sort(
+      (a, b) => new Date(a.requests[0].raisedAt) - new Date(b.requests[0].raisedAt)
+    );
+  }
+
+  async _copyInteractionId(id) {
+    try {
+      await navigator.clipboard.writeText(id);
+    } catch {
+      // clipboard unavailable; the id is still visible in the row
+    }
+  }
+
   render() {
     const list = this._tab === 'active' ? this._filteredActive() : this._history;
     return html`
@@ -438,10 +518,47 @@ class HandRaiseSupervisor extends LitElement {
         </select>
       </div>
 
+      ${this._tab === 'active' ? this._renderSummaryRow() : ''}
+
       <div class="cards">
         ${list.length === 0
           ? html`<div class="empty-state">No ${this._tab === 'active' ? 'active requests' : 'history'} to show.</div>`
-          : list.map((r) => this._renderCard(r))}
+          : this._tab === 'active' && !this._filterTeam
+            ? this._groupedByTeam(list).map((g) => this._renderTeamGroup(g))
+            : list.map((r) => this._renderCard(r))}
+      </div>
+    `;
+  }
+
+  _renderSummaryRow() {
+    const active = this._activeRequests.filter((r) => r.status === 'active').length;
+    const acknowledged = this._activeRequests.filter((r) => r.status === 'acknowledged').length;
+    return html`
+      <div class="summary-row">
+        <div class="summary-stat">
+          <span class="value danger">${active}</span>
+          <span class="label">Waiting</span>
+        </div>
+        <div class="summary-stat">
+          <span class="value warning">${acknowledged}</span>
+          <span class="label">Acknowledged</span>
+        </div>
+        <div class="summary-stat">
+          <span class="value">${this._activeRequests.length}</span>
+          <span class="label">Total Active</span>
+        </div>
+      </div>
+    `;
+  }
+
+  _renderTeamGroup(group) {
+    return html`
+      <div class="team-group">
+        <div class="team-group-header">
+          <span>${group.teamName}</span>
+          <span class="count">${group.requests.length}</span>
+        </div>
+        ${group.requests.map((r) => this._renderCard(r))}
       </div>
     `;
   }
@@ -466,7 +583,20 @@ class HandRaiseSupervisor extends LitElement {
             ${!isHistory
               ? html`<span>Elapsed: ${this._elapsed(request.raisedAt)}</span>`
               : html`<span>Raised: ${new Date(request.raisedAt).toLocaleTimeString()}</span>`}
-            ${request.interactionId ? html`<span>Interaction: ${request.interactionId}</span>` : ''}
+            ${request.interactionId
+              ? html`<span>
+                  Interaction: ${request.interactionId}
+                  <a
+                    class="interaction-copy"
+                    href="#"
+                    @click=${(e) => {
+                      e.preventDefault();
+                      this._copyInteractionId(request.interactionId);
+                    }}
+                    >copy</a
+                  >
+                </span>`
+              : ''}
             ${isHistory && request.acknowledgedBy ? html`<span>By: ${request.acknowledgedBy}</span>` : ''}
           </div>
         </div>

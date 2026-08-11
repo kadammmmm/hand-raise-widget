@@ -22,5 +22,16 @@ module.exports = [
       iife: true
     },
     resolve: { extensions: ['.js'] }
+  },
+  {
+    name: 'supervisor-alert',
+    mode: 'production',
+    entry: './src/hand-raise-supervisor-alert.js',
+    output: {
+      filename: 'supervisor-alert.js',
+      path: path.resolve(__dirname, 'dist'),
+      iife: true
+    },
+    resolve: { extensions: ['.js'] }
   }
 ];

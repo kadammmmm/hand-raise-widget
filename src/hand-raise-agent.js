@@ -3,10 +3,14 @@ import { Desktop } from '@wxcc-desktop/sdk';
 import { sharedStyles } from './shared/styles.js';
 import { HAND_RAISE_REASONS, NOTE_MAX_LENGTH, HAND_RAISE_STATUS } from './shared/constants.js';
 import { connectSSE } from './shared/sse-client.js';
+import { anchorBelow } from './shared/overlay.js';
 
 Desktop.config.init();
 window.handRaiseService = Desktop.agentContact?.SERVICE;
 
+// advancedHeader-only widget: a compact hand icon that lives in the
+// always-visible header strip and expands into a floating panel on click.
+// No dedicated page or auxiliary panel tab — raise/lower is the whole feature.
 class HandRaiseAgent extends LitElement {
   static properties = {
     darkmode: { type: String, reflect: true },
@@ -14,12 +18,12 @@ class HandRaiseAgent extends LitElement {
     accessToken: { type: String, attribute: 'access-token' },
 
     _agent: { state: true },
-    _interaction: { state: true },
     _status: { state: true },
     _requestId: { state: true },
     _reason: { state: true },
     _note: { state: true },
-    _formOpen: { state: true },
+    _panelOpen: { state: true },
+    _panelPosition: { state: true },
     _elapsedSeconds: { state: true },
     _acknowledgedBy: { state: true },
     _lastMessage: { state: true },
@@ -28,79 +32,22 @@ class HandRaiseAgent extends LitElement {
   };
 
   static styles = [sharedStyles, css`
-    .body {
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+    :host {
+      display: inline-block;
     }
 
-    .hand-toggle {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 14px;
-      border-radius: 10px;
-      background: var(--surface-color);
-      border: 1px solid var(--border-color);
-    }
-
-    .hand-icon {
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 22px;
-      background: var(--hand-raise-idle);
-      color: #fff;
-      flex-shrink: 0;
-      transition: background 0.2s ease;
-    }
-
-    .hand-icon.raised {
-      background: var(--hand-raise-active);
-      animation: pulse-ring 1.6s infinite;
-    }
-
-    .hand-icon.acknowledged {
-      background: var(--warning-color);
-      animation: none;
-    }
-
-    .hand-meta {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .hand-label {
-      font-weight: 600;
-      font-size: 14px;
-    }
-
-    .hand-timer {
-      font-size: 12px;
-      color: var(--text-muted);
+    .timer-inline {
+      font-size: 11px;
       font-variant-numeric: tabular-nums;
+      color: var(--text-muted);
     }
 
-    .toggle-btn {
-      flex-shrink: 0;
+    .label {
+      font-size: 12px;
+      font-weight: 600;
     }
 
-    .form {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      padding: 12px;
-      border: 1px solid var(--border-color);
-      border-radius: 10px;
-    }
-
-    label {
+    label.field-label {
       font-size: 12px;
       font-weight: 600;
       color: var(--text-muted);
@@ -112,14 +59,14 @@ class HandRaiseAgent extends LitElement {
       text-align: right;
     }
 
-    .form-actions {
+    .panel-actions {
       display: flex;
       gap: 8px;
       justify-content: flex-end;
     }
 
     .notification {
-      padding: 10px 12px;
+      padding: 8px 10px;
       border-radius: 8px;
       font-size: 12px;
       background: var(--surface-color);
@@ -130,12 +77,6 @@ class HandRaiseAgent extends LitElement {
       color: var(--danger-color);
       font-size: 12px;
     }
-
-    .no-interaction {
-      font-size: 12px;
-      color: var(--text-muted);
-      padding: 8px;
-    }
   `];
 
   constructor() {
@@ -144,12 +85,12 @@ class HandRaiseAgent extends LitElement {
     this.backendUrl = '';
     this.accessToken = '';
     this._agent = null;
-    this._interaction = null;
     this._status = HAND_RAISE_STATUS.RESOLVED;
     this._requestId = null;
     this._reason = HAND_RAISE_REASONS[0].value;
     this._note = '';
-    this._formOpen = false;
+    this._panelOpen = false;
+    this._panelPosition = { top: 0, left: 0 };
     this._elapsedSeconds = 0;
     this._acknowledgedBy = null;
     this._lastMessage = '';
@@ -157,17 +98,20 @@ class HandRaiseAgent extends LitElement {
     this._error = '';
     this._timerHandle = null;
     this._eventSource = null;
+    this._onDocClick = (e) => this._handleDocumentClick(e);
   }
 
   connectedCallback() {
     super.connectedCallback();
     this._initAgentContext();
+    document.addEventListener('click', this._onDocClick, true);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this._stopTimer();
     this._eventSource?.close();
+    document.removeEventListener('click', this._onDocClick, true);
   }
 
   async _initAgentContext() {
@@ -179,7 +123,7 @@ class HandRaiseAgent extends LitElement {
         teamId: personData?.teamId || '',
         teamName: personData?.teamName || ''
       };
-    } catch (err) {
+    } catch {
       this._agent = { id: 'unknown', name: 'Agent', teamId: '', teamName: '' };
     }
 
@@ -211,15 +155,24 @@ class HandRaiseAgent extends LitElement {
     }
   }
 
-  _openForm() {
-    this._formOpen = true;
-    this._error = '';
+  _handleDocumentClick(e) {
+    if (!this._panelOpen) return;
+    const path = e.composedPath();
+    if (!path.includes(this)) {
+      this._panelOpen = false;
+    }
   }
 
-  _closeForm() {
-    this._formOpen = false;
-    this._reason = HAND_RAISE_REASONS[0].value;
-    this._note = '';
+  _toggleTrigger(e) {
+    e.stopPropagation();
+    if (this._panelOpen) {
+      this._panelOpen = false;
+      return;
+    }
+    const trigger = this.shadowRoot.querySelector('.header-trigger');
+    this._panelPosition = anchorBelow(trigger, 320);
+    this._panelOpen = true;
+    this._error = '';
   }
 
   async _submitHandRaise() {
@@ -250,8 +203,7 @@ class HandRaiseAgent extends LitElement {
 
       this._requestId = data.id;
       this._status = HAND_RAISE_STATUS.ACTIVE;
-      this._interaction = interaction;
-      this._formOpen = false;
+      this._panelOpen = false;
       this._elapsedSeconds = 0;
       this._acknowledgedBy = null;
       this._lastMessage = '';
@@ -297,6 +249,7 @@ class HandRaiseAgent extends LitElement {
     this._status = HAND_RAISE_STATUS.RESOLVED;
     this._requestId = null;
     this._acknowledgedBy = null;
+    this._panelOpen = false;
     this._stopTimer();
     this._elapsedSeconds = 0;
   }
@@ -321,73 +274,78 @@ class HandRaiseAgent extends LitElement {
     return `${m}:${s}`;
   }
 
-  _renderHandIcon() {
-    const raised = this._status === HAND_RAISE_STATUS.ACTIVE;
-    const acknowledged = this._status === HAND_RAISE_STATUS.ACKNOWLEDGED;
-    const cls = raised ? 'raised' : acknowledged ? 'acknowledged' : '';
-    return html`<div class="hand-icon ${cls}">✋</div>`;
-  }
-
   render() {
     const isRaised = this._status !== HAND_RAISE_STATUS.RESOLVED;
+    const iconCls =
+      this._status === HAND_RAISE_STATUS.ACTIVE ? 'raised' : this._status === HAND_RAISE_STATUS.ACKNOWLEDGED ? 'acknowledged' : '';
 
     return html`
-      <div class="header">
-        <div>
-          <p class="header-title">Hand Raise</p>
-          <a class="header-subtitle" href="#" @click=${(e) => e.preventDefault()}>powered by bucher+suter</a>
-        </div>
-      </div>
+      <button class="header-trigger" @click=${(e) => this._toggleTrigger(e)}>
+        <span class="icon-badge ${iconCls}">✋</span>
+        <span class="label">${isRaised ? 'Hand Raised' : 'Raise Hand'}</span>
+        ${isRaised ? html`<span class="timer-inline">${this._formatElapsed()}</span>` : ''}
+      </button>
 
-      <div class="body">
-        <div class="hand-toggle">
-          ${this._renderHandIcon()}
-          <div class="hand-meta">
-            <span class="hand-label">${isRaised ? 'Hand Raised' : 'Raise Hand'}</span>
-            ${isRaised ? html`<span class="hand-timer">${this._formatElapsed()}</span>` : ''}
-          </div>
-          <button
-            class="toggle-btn ${isRaised ? 'secondary' : 'primary'}"
-            ?disabled=${this._submitting}
-            @click=${() => (isRaised ? this._lowerHand() : this._openForm())}
-          >
-            ${isRaised ? 'Lower' : 'Raise'}
-          </button>
-        </div>
+      ${this._panelOpen ? this._renderPanel(isRaised) : ''}
+    `;
+  }
 
-        ${this._formOpen ? this._renderForm() : ''}
-        ${this._lastMessage ? html`<div class="notification">${this._lastMessage}</div>` : ''}
-        ${this._error ? html`<div class="error">${this._error}</div>` : ''}
+  _renderPanel(isRaised) {
+    return html`
+      <div class="overlay-backdrop" @click=${() => (this._panelOpen = false)}></div>
+      <div
+        class="overlay-panel"
+        style="top: ${this._panelPosition.top}px; left: ${this._panelPosition.left}px;"
+        @click=${(e) => e.stopPropagation()}
+      >
+        <div class="panel-header">
+          <span class="panel-title">Hand Raise</span>
+          <button class="close-btn" @click=${() => (this._panelOpen = false)}>✕</button>
+        </div>
+        <div class="panel-body">
+          ${isRaised ? this._renderStatusBody() : this._renderRaiseForm()}
+          ${this._lastMessage ? html`<div class="notification">${this._lastMessage}</div>` : ''}
+          ${this._error ? html`<div class="error">${this._error}</div>` : ''}
+        </div>
       </div>
     `;
   }
 
-  _renderForm() {
+  _renderStatusBody() {
     return html`
-      <div class="form">
-        <div>
-          <label for="reason">Reason</label>
-          <select id="reason" .value=${this._reason} @change=${(e) => (this._reason = e.target.value)}>
-            ${HAND_RAISE_REASONS.map((r) => html`<option value=${r.value}>${r.label}</option>`)}
-          </select>
-        </div>
-        <div>
-          <label for="note">Note (optional)</label>
-          <textarea
-            id="note"
-            rows="2"
-            maxlength=${NOTE_MAX_LENGTH}
-            .value=${this._note}
-            @input=${(e) => (this._note = e.target.value)}
-          ></textarea>
-          <div class="char-count">${this._note.length} / ${NOTE_MAX_LENGTH}</div>
-        </div>
-        <div class="form-actions">
-          <button class="secondary" @click=${() => this._closeForm()}>Cancel</button>
-          <button class="danger" ?disabled=${this._submitting} @click=${() => this._submitHandRaise()}>
-            Submit
-          </button>
-        </div>
+      <div class="notification">
+        ${this._status === HAND_RAISE_STATUS.ACKNOWLEDGED
+          ? `Supervisor ${this._acknowledgedBy || ''} is reviewing your request.`
+          : 'Waiting for a supervisor to respond.'}
+      </div>
+      <div class="panel-actions">
+        <button class="secondary" ?disabled=${this._submitting} @click=${() => this._lowerHand()}>Lower Hand</button>
+      </div>
+    `;
+  }
+
+  _renderRaiseForm() {
+    return html`
+      <div>
+        <label class="field-label" for="reason">Reason</label>
+        <select id="reason" .value=${this._reason} @change=${(e) => (this._reason = e.target.value)}>
+          ${HAND_RAISE_REASONS.map((r) => html`<option value=${r.value}>${r.label}</option>`)}
+        </select>
+      </div>
+      <div>
+        <label class="field-label" for="note">Note (optional)</label>
+        <textarea
+          id="note"
+          rows="2"
+          maxlength=${NOTE_MAX_LENGTH}
+          .value=${this._note}
+          @input=${(e) => (this._note = e.target.value)}
+        ></textarea>
+        <div class="char-count">${this._note.length} / ${NOTE_MAX_LENGTH}</div>
+      </div>
+      <div class="panel-actions">
+        <button class="secondary" @click=${() => (this._panelOpen = false)}>Cancel</button>
+        <button class="danger" ?disabled=${this._submitting} @click=${() => this._submitHandRaise()}>Submit</button>
       </div>
     `;
   }

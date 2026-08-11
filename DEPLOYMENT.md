@@ -6,27 +6,28 @@ Current live deployment for the Hand Raise widget.
 
 | Component | URL |
 |---|---|
-| Agent widget bundle | https://kadammmmm.github.io/hand-raise-widget/agent.js |
-| Supervisor widget bundle | https://kadammmmm.github.io/hand-raise-widget/supervisor.js |
+| Agent widget bundle (advancedHeader) | https://kadammmmm.github.io/hand-raise-widget/agent.js |
+| Supervisor alert widget bundle (advancedHeader) | https://kadammmmm.github.io/hand-raise-widget/supervisor-alert.js |
+| Supervisor dashboard widget bundle (Nav Panel) | https://kadammmmm.github.io/hand-raise-widget/supervisor.js |
 | Backend API | https://hand-raise-api.onrender.com/api |
 | Backend health check | https://hand-raise-api.onrender.com/api/health |
 | GitHub repo | https://github.com/kadammmmm/hand-raise-widget |
 | Render dashboard | https://dashboard.render.com/web/srv-d9t3993m8hqs73ctb8ng |
 
-These are the exact URLs already referenced in [docs/agent-layout.json](docs/agent-layout.json) and [docs/supervisor-layout.json](docs/supervisor-layout.json) — no placeholder substitution needed when importing those into Control Hub.
+These are the exact URLs already referenced in [docs/agent-layout.json](docs/agent-layout.json), [docs/supervisor-header-layout.json](docs/supervisor-header-layout.json), and [docs/supervisor-layout.json](docs/supervisor-layout.json) — no placeholder substitution needed when importing those into Control Hub.
 
 ## Widget Hosting (GitHub Pages)
 
 Repo: `kadammmmm/hand-raise-widget` (public — GitHub Pages on a personal account's free plan requires a public repo).
 
-Pages is configured to serve from the `main` branch root (`/`), which is why `agent.js` and `supervisor.js` live at the repo root alongside `dist/` — see [package.json](package.json)'s `postbuild` script.
+Pages is configured to serve from the `main` branch root (`/`), which is why `agent.js`, `supervisor-alert.js`, and `supervisor.js` live at the repo root alongside `dist/` — see [package.json](package.json)'s `postbuild` script.
 
 **To ship a widget change:**
 
 ```bash
 npm install          # first time only
-npm run build         # webpack -> dist/agent.js, dist/supervisor.js
-npm run postbuild      # copies both into the repo root
+npm run build         # webpack -> dist/agent.js, dist/supervisor-alert.js, dist/supervisor.js
+npm run postbuild      # copies all three into the repo root
 git add -A
 git commit -m "Update widgets"
 git push
@@ -122,7 +123,8 @@ This will assign a new service id and, if `hand-raise-api` is taken, a different
 ## Post-Deploy Checklist
 
 - [x] `agent.js` and `supervisor.js` return `200 OK` from GitHub Pages
+- [ ] `supervisor-alert.js` returns `200 OK` from GitHub Pages (added after the advancedHeader rework — verify after next push)
 - [x] `/api/health` returns `{"status":"ok"}` from Render
 - [ ] `CORS_ORIGINS` locked down to the real Agent Desktop origin before production rollout
-- [ ] `docs/agent-layout.json` and `docs/supervisor-layout.json` imported into Control Hub
-- [ ] End-to-end test: agent raises hand -> supervisor dashboard receives SSE event -> acknowledge/resolve round-trips back to agent
+- [ ] `docs/agent-layout.json` and `docs/supervisor-header-layout.json` imported into the agent/supervisor `advancedHeader` sections, `docs/supervisor-layout.json` imported as the supervisor Nav Panel page
+- [ ] End-to-end test: agent raises hand from the header -> supervisor gets a header toast + browser notification -> acknowledge/resolve round-trips back to the agent's header panel -> Nav Panel dashboard reflects the same state (grouped by team, in the summary counts, and in history once resolved)

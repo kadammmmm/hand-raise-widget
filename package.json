@@ -6,7 +6,7 @@
   "scripts": {
     "build": "webpack --config webpack.config.cjs",
     "watch": "webpack --config webpack.config.cjs --watch",
-    "postbuild": "node -e \"require('fs').copyFileSync('dist/agent.js','agent.js');require('fs').copyFileSync('dist/supervisor.js','supervisor.js');\""
+    "postbuild": "node -e \"require('fs').copyFileSync('dist/agent.js','agent.js');require('fs').copyFileSync('dist/supervisor.js','supervisor.js');require('fs').copyFileSync('dist/supervisor-alert.js','supervisor-alert.js');\""
   },
   "dependencies": {
     "@wxcc-desktop/sdk": "^1.0.0",

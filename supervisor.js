@@ -173,6 +173,139 @@
     70% { box-shadow: 0 0 0 12px rgba(220, 53, 69, 0); }
     100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
   }
+
+  /* === Header trigger + floating overlay panel ===
+     Used by advancedHeader widgets: a small always-visible control that
+     expands into a fixed-position panel anchored to the trigger via
+     getBoundingClientRect, so it isn't clipped by the header's height. */
+
+  .header-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 16px;
+    border: none;
+    background: var(--surface-color);
+    color: var(--text-color);
+  }
+
+  .header-trigger .icon-badge {
+    position: relative;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--hand-raise-idle);
+    color: #fff;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .header-trigger .icon-badge.raised {
+    background: var(--hand-raise-active);
+    animation: pulse-ring 1.6s infinite;
+  }
+
+  .header-trigger .icon-badge.acknowledged {
+    background: var(--warning-color);
+    animation: none;
+  }
+
+  .count-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 7px;
+    background: var(--danger-color);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+  }
+
+  .overlay-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: transparent;
+  }
+
+  .overlay-panel {
+    position: fixed;
+    min-width: 320px;
+    max-width: 400px;
+    max-height: 70vh;
+    overflow-y: auto;
+    background: var(--bg-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+    z-index: 10000;
+    animation: slide-down 0.15s ease-out;
+  }
+
+  @keyframes slide-down {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .overlay-panel .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .overlay-panel .panel-title {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .overlay-panel .close-btn {
+    background: transparent;
+    color: var(--text-muted);
+    padding: 2px 6px;
+    font-size: 14px;
+  }
+
+  .overlay-panel .panel-body {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* Toast notification (auto-dismissing, stacked top-right of the trigger) */
+  .toast {
+    position: fixed;
+    z-index: 10001;
+    min-width: 260px;
+    max-width: 340px;
+    background: var(--bg-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--danger-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    padding: 10px 12px;
+    font-size: 12px;
+    animation: slide-down 0.15s ease-out;
+  }
+
+  .toast .toast-title {
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
 `,fe=[{value:"escalation",label:"Escalation Needed",icon:"icon-escalate"},{value:"billing",label:"Billing Question",icon:"icon-currency"},{value:"technical",label:"Technical Issue",icon:"icon-settings"},{value:"upset_customer",label:"Customer Upset",icon:"icon-warning"},{value:"policy",label:"Policy Clarification",icon:"icon-document"},{value:"other",label:"Other",icon:"icon-help-circle"}],pe={voice:"icon-handset",chat:"icon-chat",email:"icon-email",social:"icon-share",none:"icon-circle"};de.Desktop.config.init(),window.handRaiseService=de.Desktop.agentContact?.SERVICE;const ve=Object.fromEntries(fe.map(e=>[e.value,e.label]));class ge extends ue{static properties={darkmode:{type:String,reflect:!0},backendUrl:{type:String,attribute:"backend-url"},accessToken:{type:String,attribute:"access-token"},_supervisor:{state:!0},_teams:{state:!0},_activeRequests:{state:!0},_history:{state:!0},_tab:{state:!0},_filterTeam:{state:!0},_filterReason:{state:!0},_filterChannel:{state:!0},_soundEnabled:{state:!0},_now:{state:!0},_connected:{state:!0},_error:{state:!0}};static styles=[he,s`
     .toolbar {
       display: flex;
@@ -335,7 +468,67 @@
       font-size: 10px;
       font-weight: 700;
     }
-  `];constructor(){super(),this.darkmode="false",this.backendUrl="",this.accessToken="",this._supervisor=null,this._teams=[],this._activeRequests=[],this._history=[],this._tab="active",this._filterTeam="",this._filterReason="",this._filterChannel="",this._soundEnabled=!0,this._now=Date.now(),this._connected=!1,this._error="",this._eventSource=null,this._tickHandle=null,this._audioCtx=null}connectedCallback(){super.connectedCallback(),this._init(),this._tickHandle=setInterval(()=>{this._now=Date.now()},1e3)}disconnectedCallback(){super.disconnectedCallback(),this._eventSource?.close(),this._tickHandle&&clearInterval(this._tickHandle)}async _init(){try{const e=await(de.Desktop.agentContact?.SERVICE?.webex?.fetchPersonData?.("me"));this._supervisor={id:e?.id||"unknown",name:e?.displayName||e?.name||"Supervisor"},this._teams=e?.teams||[]}catch{this._supervisor={id:"unknown",name:"Supervisor"},this._teams=[]}await this._loadActive(),this._connectStream()}async _loadActive(){try{const e=this._filterTeam?`?teamId=${encodeURIComponent(this._filterTeam)}`:"",t=await fetch(`${this.backendUrl}/hand-raise${e}`);if(!t.ok)throw new Error(`Failed to load requests (${t.status})`);this._activeRequests=await t.json()}catch(e){this._error=e.message||"Failed to load active requests"}}async _loadHistory(){try{const e=this._filterTeam?`?teamId=${encodeURIComponent(this._filterTeam)}`:"",t=await fetch(`${this.backendUrl}/hand-raise/history${e}`);if(!t.ok)throw new Error(`Failed to load history (${t.status})`);this._history=await t.json()}catch(e){this._error=e.message||"Failed to load history"}}_connectStream(){if(!this.backendUrl)return;const e=this._filterTeam?`?teamId=${encodeURIComponent(this._filterTeam)}`:"",t=`${this.backendUrl}/hand-raise/stream${e}`;this._eventSource=function(e,t){const n=new EventSource(e);return n.addEventListener("hand-raise:new",e=>{t.onNew?.(JSON.parse(e.data))}),n.addEventListener("hand-raise:acknowledged",e=>{t.onAcknowledged?.(JSON.parse(e.data))}),n.addEventListener("hand-raise:resolved",e=>{t.onResolved?.(JSON.parse(e.data))}),n.addEventListener("hand-raise:lowered",e=>{t.onLowered?.(JSON.parse(e.data))}),n.onopen=()=>{t.onOpen?.()},n.onerror=()=>{t.onError?.()},n}(t,{onOpen:()=>this._connected=!0,onError:()=>this._connected=!1,onNew:e=>this._handleNew(e),onLowered:e=>this._handleLowered(e),onAcknowledged:e=>this._handleAcknowledged(e),onResolved:e=>this._handleResolved(e)})}_handleNew(e){this._activeRequests=[...this._activeRequests,e],this._notify(e)}_handleLowered(e){this._activeRequests=this._activeRequests.filter(t=>t.id!==e.id)}_handleAcknowledged(e){this._activeRequests=this._activeRequests.map(t=>t.id===e.id?{...t,...e}:t)}_handleResolved(e){this._activeRequests=this._activeRequests.filter(t=>t.id!==e.id),"history"===this._tab&&this._loadHistory()}_notify(e){"granted"===Notification?.permission&&new Notification("Hand Raise Request",{body:`${e.agentName} needs assistance (${ve[e.reason]||e.reason})`}),this._soundEnabled&&this._playChime()}_requestNotificationPermission(){Notification&&"default"===Notification.permission&&Notification.requestPermission()}_playChime(){try{this._audioCtx||(this._audioCtx=new(window.AudioContext||window.webkitAudioContext));const e=this._audioCtx,t=e.createOscillator(),n=e.createGain();t.type="sine",t.frequency.value=880,n.gain.setValueAtTime(.15,e.currentTime),n.gain.exponentialRampToValueAtTime(.001,e.currentTime+.4),t.connect(n).connect(e.destination),t.start(),t.stop(e.currentTime+.4)}catch{}}async _acknowledge(e){try{await fetch(`${this.backendUrl}/hand-raise/${e.id}/acknowledge`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({supervisorId:this._supervisor.id,supervisorName:this._supervisor.name})})}catch(e){this._error=e.message||"Failed to acknowledge request"}}async _resolve(e){try{await fetch(`${this.backendUrl}/hand-raise/${e.id}/resolve`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({supervisorId:this._supervisor.id,supervisorName:this._supervisor.name})})}catch(e){this._error=e.message||"Failed to resolve request"}}_switchTab(e){this._tab=e,"history"===e&&this._loadHistory()}_elapsed(e){const t=Math.max(0,Math.floor((this._now-new Date(e).getTime())/1e3));return`${Math.floor(t/60).toString().padStart(2,"0")}:${(t%60).toString().padStart(2,"0")}`}_initials(e){return(e||"?").split(" ").map(e=>e[0]).join("").slice(0,2).toUpperCase()}_filteredActive(){return this._activeRequests.filter(e=>!this._filterReason||e.reason===this._filterReason).filter(e=>!this._filterChannel||e.channelType===this._filterChannel).sort((e,t)=>new Date(e.raisedAt)-new Date(t.raisedAt))}render(){const e="active"===this._tab?this._filteredActive():this._history;return B`
+
+    .summary-row {
+      display: flex;
+      gap: 16px;
+      padding: 0 16px 10px;
+      flex-wrap: wrap;
+    }
+
+    .summary-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 72px;
+    }
+
+    .summary-stat .value {
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .summary-stat .value.danger { color: var(--danger-color); }
+    .summary-stat .value.warning { color: var(--warning-color); }
+
+    .summary-stat .label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .team-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .team-group-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      padding-top: 4px;
+    }
+
+    .team-group-header .count {
+      background: var(--surface-color);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 0 7px;
+      font-weight: 700;
+    }
+
+    .interaction-copy {
+      color: var(--primary-color);
+      text-decoration: none;
+      margin-left: 4px;
+    }
+  `];constructor(){super(),this.darkmode="false",this.backendUrl="",this.accessToken="",this._supervisor=null,this._teams=[],this._activeRequests=[],this._history=[],this._tab="active",this._filterTeam="",this._filterReason="",this._filterChannel="",this._soundEnabled=!0,this._now=Date.now(),this._connected=!1,this._error="",this._eventSource=null,this._tickHandle=null,this._audioCtx=null}connectedCallback(){super.connectedCallback(),this._init(),this._tickHandle=setInterval(()=>{this._now=Date.now()},1e3)}disconnectedCallback(){super.disconnectedCallback(),this._eventSource?.close(),this._tickHandle&&clearInterval(this._tickHandle)}async _init(){try{const e=await(de.Desktop.agentContact?.SERVICE?.webex?.fetchPersonData?.("me"));this._supervisor={id:e?.id||"unknown",name:e?.displayName||e?.name||"Supervisor"},this._teams=e?.teams||[]}catch{this._supervisor={id:"unknown",name:"Supervisor"},this._teams=[]}await this._loadActive(),this._connectStream()}async _loadActive(){try{const e=this._filterTeam?`?teamId=${encodeURIComponent(this._filterTeam)}`:"",t=await fetch(`${this.backendUrl}/hand-raise${e}`);if(!t.ok)throw new Error(`Failed to load requests (${t.status})`);this._activeRequests=await t.json()}catch(e){this._error=e.message||"Failed to load active requests"}}async _loadHistory(){try{const e=this._filterTeam?`?teamId=${encodeURIComponent(this._filterTeam)}`:"",t=await fetch(`${this.backendUrl}/hand-raise/history${e}`);if(!t.ok)throw new Error(`Failed to load history (${t.status})`);this._history=await t.json()}catch(e){this._error=e.message||"Failed to load history"}}_connectStream(){if(!this.backendUrl)return;const e=this._filterTeam?`?teamId=${encodeURIComponent(this._filterTeam)}`:"",t=`${this.backendUrl}/hand-raise/stream${e}`;this._eventSource=function(e,t){const n=new EventSource(e);return n.addEventListener("hand-raise:new",e=>{t.onNew?.(JSON.parse(e.data))}),n.addEventListener("hand-raise:acknowledged",e=>{t.onAcknowledged?.(JSON.parse(e.data))}),n.addEventListener("hand-raise:resolved",e=>{t.onResolved?.(JSON.parse(e.data))}),n.addEventListener("hand-raise:lowered",e=>{t.onLowered?.(JSON.parse(e.data))}),n.onopen=()=>{t.onOpen?.()},n.onerror=()=>{t.onError?.()},n}(t,{onOpen:()=>this._connected=!0,onError:()=>this._connected=!1,onNew:e=>this._handleNew(e),onLowered:e=>this._handleLowered(e),onAcknowledged:e=>this._handleAcknowledged(e),onResolved:e=>this._handleResolved(e)})}_handleNew(e){this._activeRequests=[...this._activeRequests,e],this._notify(e)}_handleLowered(e){this._activeRequests=this._activeRequests.filter(t=>t.id!==e.id)}_handleAcknowledged(e){this._activeRequests=this._activeRequests.map(t=>t.id===e.id?{...t,...e}:t)}_handleResolved(e){this._activeRequests=this._activeRequests.filter(t=>t.id!==e.id),"history"===this._tab&&this._loadHistory()}_notify(e){"granted"===Notification?.permission&&new Notification("Hand Raise Request",{body:`${e.agentName} needs assistance (${ve[e.reason]||e.reason})`}),this._soundEnabled&&this._playChime()}_requestNotificationPermission(){Notification&&"default"===Notification.permission&&Notification.requestPermission()}_playChime(){try{this._audioCtx||(this._audioCtx=new(window.AudioContext||window.webkitAudioContext));const e=this._audioCtx,t=e.createOscillator(),n=e.createGain();t.type="sine",t.frequency.value=880,n.gain.setValueAtTime(.15,e.currentTime),n.gain.exponentialRampToValueAtTime(.001,e.currentTime+.4),t.connect(n).connect(e.destination),t.start(),t.stop(e.currentTime+.4)}catch{}}async _acknowledge(e){try{await fetch(`${this.backendUrl}/hand-raise/${e.id}/acknowledge`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({supervisorId:this._supervisor.id,supervisorName:this._supervisor.name})})}catch(e){this._error=e.message||"Failed to acknowledge request"}}async _resolve(e){try{await fetch(`${this.backendUrl}/hand-raise/${e.id}/resolve`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({supervisorId:this._supervisor.id,supervisorName:this._supervisor.name})})}catch(e){this._error=e.message||"Failed to resolve request"}}_switchTab(e){this._tab=e,"history"===e&&this._loadHistory()}_elapsed(e){const t=Math.max(0,Math.floor((this._now-new Date(e).getTime())/1e3));return`${Math.floor(t/60).toString().padStart(2,"0")}:${(t%60).toString().padStart(2,"0")}`}_initials(e){return(e||"?").split(" ").map(e=>e[0]).join("").slice(0,2).toUpperCase()}_filteredActive(){return this._activeRequests.filter(e=>!this._filterReason||e.reason===this._filterReason).filter(e=>!this._filterChannel||e.channelType===this._filterChannel).sort((e,t)=>new Date(e.raisedAt)-new Date(t.raisedAt))}_groupedByTeam(e){const t=new Map;for(const n of e){const e=n.teamId||n.teamName||"unassigned";t.has(e)||t.set(e,{teamName:n.teamName||"Unassigned",requests:[]}),t.get(e).requests.push(n)}return Array.from(t.values()).sort((e,t)=>new Date(e.requests[0].raisedAt)-new Date(t.requests[0].raisedAt))}async _copyInteractionId(e){try{await navigator.clipboard.writeText(e)}catch{}}render(){const e="active"===this._tab?this._filteredActive():this._history;return B`
       <div class="header">
         <div>
           <p class="header-title">
@@ -381,8 +574,33 @@
         </select>
       </div>
 
+      ${"active"===this._tab?this._renderSummaryRow():""}
+
       <div class="cards">
-        ${0===e.length?B`<div class="empty-state">No ${"active"===this._tab?"active requests":"history"} to show.</div>`:e.map(e=>this._renderCard(e))}
+        ${0===e.length?B`<div class="empty-state">No ${"active"===this._tab?"active requests":"history"} to show.</div>`:"active"!==this._tab||this._filterTeam?e.map(e=>this._renderCard(e)):this._groupedByTeam(e).map(e=>this._renderTeamGroup(e))}
+      </div>
+    `}_renderSummaryRow(){const e=this._activeRequests.filter(e=>"active"===e.status).length,t=this._activeRequests.filter(e=>"acknowledged"===e.status).length;return B`
+      <div class="summary-row">
+        <div class="summary-stat">
+          <span class="value danger">${e}</span>
+          <span class="label">Waiting</span>
+        </div>
+        <div class="summary-stat">
+          <span class="value warning">${t}</span>
+          <span class="label">Acknowledged</span>
+        </div>
+        <div class="summary-stat">
+          <span class="value">${this._activeRequests.length}</span>
+          <span class="label">Total Active</span>
+        </div>
+      </div>
+    `}_renderTeamGroup(e){return B`
+      <div class="team-group">
+        <div class="team-group-header">
+          <span>${e.teamName}</span>
+          <span class="count">${e.requests.length}</span>
+        </div>
+        ${e.requests.map(e=>this._renderCard(e))}
       </div>
     `}_renderCard(e){const t="history"===this._tab;return B`
       <div class="card">
@@ -398,7 +616,15 @@
           ${e.note?B`<div class="note-text">${e.note}</div>`:""}
           <div class="card-meta-row">
             ${t?B`<span>Raised: ${new Date(e.raisedAt).toLocaleTimeString()}</span>`:B`<span>Elapsed: ${this._elapsed(e.raisedAt)}</span>`}
-            ${e.interactionId?B`<span>Interaction: ${e.interactionId}</span>`:""}
+            ${e.interactionId?B`<span>
+                  Interaction: ${e.interactionId}
+                  <a
+                    class="interaction-copy"
+                    href="#"
+                    @click=${t=>{t.preventDefault(),this._copyInteractionId(e.interactionId)}}
+                    >copy</a
+                  >
+                </span>`:""}
             ${t&&e.acknowledgedBy?B`<span>By: ${e.acknowledgedBy}</span>`:""}
           </div>
         </div>
