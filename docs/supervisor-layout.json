@@ -1,8 +1,8 @@
 {
   "nav": {
     "label": "Hand Raise",
-    "icon": "icon-raise-hand",
-    "iconType": "momentum",
+    "icon": "raise-hand-regular",
+    "iconType": "momentumDesign",
     "navigateTo": "hand-raise-page",
     "align": "top",
     "isDefaultLandingPage": false
