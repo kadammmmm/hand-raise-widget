@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { Desktop } from '@wxcc-desktop/sdk';
 import { sharedStyles } from './shared/styles.js';
-import { HAND_RAISE_REASONS } from './shared/constants.js';
+import { HAND_RAISE_REASONS, DEFAULT_SLA_THRESHOLD_SECONDS, ESCALATION_CHIME_INTERVAL_MS } from './shared/constants.js';
 import { connectSSE } from './shared/sse-client.js';
 
 Desktop.config.init();
@@ -23,6 +23,12 @@ const alertStyles = css`
     gap: 10px;
     border-radius: 18px;
     background: rgba(220, 53, 69, 0.12);
+    border: 1px solid transparent;
+  }
+
+  .header-trigger.expanded.escalated {
+    border-color: var(--danger-color);
+    animation: pulse-bg 1s infinite;
   }
 
   .summary {
@@ -53,6 +59,17 @@ const alertStyles = css`
     white-space: nowrap;
   }
 
+  .sla-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: var(--danger-color);
+    color: #fff;
+    white-space: nowrap;
+  }
+
   .row-actions {
     display: flex;
     gap: 4px;
@@ -79,10 +96,12 @@ class HandRaiseSupervisorAlert extends LitElement {
     darkmode: { type: String, reflect: true },
     backendUrl: { type: String, attribute: 'backend-url' },
     accessToken: { type: String, attribute: 'access-token' },
+    slaThresholdSeconds: { type: Number, attribute: 'sla-threshold-seconds' },
 
     _supervisor: { state: true },
     _activeRequests: { state: true },
-    _connected: { state: true }
+    _connected: { state: true },
+    _now: { state: true }
   };
 
   static styles = [sharedStyles, alertStyles];
@@ -92,21 +111,30 @@ class HandRaiseSupervisorAlert extends LitElement {
     this.darkmode = 'false';
     this.backendUrl = '';
     this.accessToken = '';
+    this.slaThresholdSeconds = DEFAULT_SLA_THRESHOLD_SECONDS;
     this._supervisor = null;
     this._activeRequests = [];
     this._connected = false;
+    this._now = Date.now();
     this._eventSource = null;
+    this._tickHandle = null;
     this._audioCtx = null;
+    this._escalation = { requestId: null, lastFiredAt: 0 };
   }
 
   connectedCallback() {
     super.connectedCallback();
     this._init();
+    this._tickHandle = setInterval(() => {
+      this._now = Date.now();
+      this._checkEscalation();
+    }, 1000);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this._eventSource?.close();
+    if (this._tickHandle) clearInterval(this._tickHandle);
   }
 
   async _init() {
@@ -219,6 +247,27 @@ class HandRaiseSupervisorAlert extends LitElement {
     return [...this._activeRequests].sort((a, b) => new Date(a.raisedAt) - new Date(b.raisedAt));
   }
 
+  _isEscalated(request) {
+    if (!request || request.status !== 'active') return false;
+    const elapsedSec = (this._now - new Date(request.raisedAt).getTime()) / 1000;
+    return elapsedSec >= this.slaThresholdSeconds;
+  }
+
+  _checkEscalation() {
+    const oldest = this._oldestSorted()[0];
+    if (!this._isEscalated(oldest)) {
+      this._escalation.requestId = null;
+      return;
+    }
+    if (this._escalation.requestId !== oldest.id) {
+      this._escalation = { requestId: oldest.id, lastFiredAt: this._now };
+      this._playChime();
+    } else if (this._now - this._escalation.lastFiredAt >= ESCALATION_CHIME_INTERVAL_MS) {
+      this._escalation.lastFiredAt = this._now;
+      this._playChime();
+    }
+  }
+
   render() {
     const sorted = this._oldestSorted();
     const count = sorted.length;
@@ -234,7 +283,7 @@ class HandRaiseSupervisorAlert extends LitElement {
 
     const oldest = sorted[0];
     return html`
-      <div class="header-trigger expanded">
+      <div class="header-trigger expanded ${this._isEscalated(oldest) ? 'escalated' : ''}">
         <span class="icon-badge raised">
           ✋
           <span class="count-badge">${count}</span>
@@ -243,6 +292,7 @@ class HandRaiseSupervisorAlert extends LitElement {
           <span class="agent-name">${oldest.agentName}</span>
           <span class="reason">${REASON_LABELS[oldest.reason] || oldest.reason}</span>
         </span>
+        ${this._isEscalated(oldest) ? html`<span class="sla-badge">SLA</span>` : ''}
         <div class="row-actions">
           ${oldest.status === 'active'
             ? html`<button class="primary" @click=${() => this._acknowledge(oldest)}>Acknowledge</button>`

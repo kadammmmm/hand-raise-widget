@@ -18,7 +18,8 @@
         },
         "properties": {
           "backendUrl": "https://hand-raise-api.onrender.com/api",
-          "accessToken": "$STORE.auth.accessToken"
+          "accessToken": "$STORE.auth.accessToken",
+          "slaThresholdSeconds": 90
         }
       }
     },

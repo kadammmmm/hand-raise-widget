@@ -38,3 +38,8 @@ export const SSE_EVENTS = {
 
 export const NOTE_MAX_LENGTH = 280;
 export const HISTORY_WINDOW_HOURS = 24;
+
+// SLA escalation: how long a request can sit unacknowledged before the
+// supervisor UI flags it (red border/pulse) and starts re-firing the chime.
+export const DEFAULT_SLA_THRESHOLD_SECONDS = 90;
+export const ESCALATION_CHIME_INTERVAL_MS = 30000;

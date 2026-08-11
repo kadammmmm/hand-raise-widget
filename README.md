@@ -5,8 +5,8 @@ Custom Webex Contact Center (WxCC) Agent Desktop widget set that lets agents req
 Three widgets, three jobs:
 
 - **`hand-raise-agent`** (advancedHeader only) — a compact hand icon always visible in the header strip. Click to raise (reason + optional note) or lower. No page, no panel tab — raising a hand is the entire feature from the agent's side.
-- **`hand-raise-supervisor-alert`** (advancedHeader) — the supervisor's always-visible hand icon. Idle, it's just a compact "Hand Raise" button. The moment a request comes in, the button itself expands inline to show the oldest request's agent/reason plus Acknowledge/Resolve buttons, alongside a browser notification + chime. No floating pop-up — see "Why no pop-up" below for why that was a deliberate choice, not an oversight.
-- **`hand-raise-supervisor`** (Navigation Panel page) — the full dashboard for everything that doesn't fit in a compact header control: requests grouped by team, a live waiting/acknowledged/total summary row, reason/channel filters, and 24h history.
+- **`hand-raise-supervisor-alert`** (advancedHeader) — the supervisor's always-visible hand icon. Idle, it's just a compact "Hand Raise" button. The moment a request comes in, the button itself expands inline to show the oldest request's agent/reason plus Acknowledge/Resolve buttons, alongside a browser notification + chime. No floating pop-up — see "Why no pop-up" below for why that was a deliberate choice, not an oversight. Unacknowledged requests past a configurable SLA threshold get a pulsing red border and a repeating chime — see "SLA Escalation" below.
+- **`hand-raise-supervisor`** (Navigation Panel page) — the full dashboard for everything that doesn't fit in a compact header control: requests grouped by team, a live waiting/acknowledged/total summary row, reason/channel filters, 24h history, and the same SLA escalation styling as the header widget.
 
 Real-time updates flow both ways over Server-Sent Events (SSE); no polling. Because header widgets stay mounted across every desktop view (unlike a Nav Panel page, which only mounts while visited), their SSE connections and notification listeners stay alive continuously.
 
@@ -103,6 +103,16 @@ Three separate imports in Control Hub -> Desktop Layouts:
 Update the `script` and `backendUrl` values in each snippet to match your deployed URLs before importing. The exact nesting of the `advancedHeader` array can vary slightly by WxCC version — verify against your tenant's layout editor if the import is rejected.
 
 Full step-by-step Control Hub walkthrough (where to click, how to merge into an existing layout, verification, rollback): see [DEPLOYMENT.md's Desktop Layout Configuration section](DEPLOYMENT.md#desktop-layout-configuration-control-hub).
+
+## SLA Escalation
+
+Both supervisor widgets accept an `slaThresholdSeconds` property (default `90`, set in both `docs/supervisor-header-layout.json` and `docs/supervisor-layout.json`). Once a request has been unacknowledged (`status: 'active'`) longer than that threshold:
+
+- The card (Nav Panel) or the expanded header control (advancedHeader alert) gets a pulsing red border and a small "SLA" badge.
+- The chime re-fires every 30 seconds (`ESCALATION_CHIME_INTERVAL_MS` in `src/shared/constants.js`) for as long as it stays unacknowledged, on top of the one-time chime that already fires when the request is first raised.
+- Only the oldest unacknowledged request drives the repeating chime — acknowledging or resolving it lets the next-oldest (if any) start its own SLA clock.
+
+Escalation state is computed client-side against `raisedAt` on every 1-second tick; nothing is persisted server-side, so changing the threshold takes effect immediately on the next widget load with no backend change needed. Tune it per tenant by editing the `slaThresholdSeconds` value in the two layout snippets before importing.
 
 ## REST API
 

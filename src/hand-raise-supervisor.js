@@ -1,7 +1,13 @@
 import { LitElement, html, css } from 'lit';
 import { Desktop } from '@wxcc-desktop/sdk';
 import { sharedStyles } from './shared/styles.js';
-import { HAND_RAISE_REASONS, CHANNEL_ICONS, HISTORY_WINDOW_HOURS } from './shared/constants.js';
+import {
+  HAND_RAISE_REASONS,
+  CHANNEL_ICONS,
+  HISTORY_WINDOW_HOURS,
+  DEFAULT_SLA_THRESHOLD_SECONDS,
+  ESCALATION_CHIME_INTERVAL_MS
+} from './shared/constants.js';
 import { connectSSE } from './shared/sse-client.js';
 
 Desktop.config.init();
@@ -14,6 +20,7 @@ class HandRaiseSupervisor extends LitElement {
     darkmode: { type: String, reflect: true },
     backendUrl: { type: String, attribute: 'backend-url' },
     accessToken: { type: String, attribute: 'access-token' },
+    slaThresholdSeconds: { type: Number, attribute: 'sla-threshold-seconds' },
 
     _supervisor: { state: true },
     _teams: { state: true },
@@ -251,6 +258,22 @@ class HandRaiseSupervisor extends LitElement {
       text-decoration: none;
       margin-left: 4px;
     }
+
+    .card.escalated {
+      border-color: var(--danger-color);
+      box-shadow: 0 0 0 1px var(--danger-color);
+      animation: pulse-bg 1.4s infinite;
+    }
+
+    .sla-badge {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      padding: 1px 7px;
+      border-radius: 10px;
+      background: var(--danger-color);
+      color: #fff;
+    }
   `];
 
   constructor() {
@@ -258,6 +281,7 @@ class HandRaiseSupervisor extends LitElement {
     this.darkmode = 'false';
     this.backendUrl = '';
     this.accessToken = '';
+    this.slaThresholdSeconds = DEFAULT_SLA_THRESHOLD_SECONDS;
     this._supervisor = null;
     this._teams = [];
     this._activeRequests = [];
@@ -273,6 +297,7 @@ class HandRaiseSupervisor extends LitElement {
     this._eventSource = null;
     this._tickHandle = null;
     this._audioCtx = null;
+    this._escalation = { requestId: null, lastFiredAt: 0 };
   }
 
   connectedCallback() {
@@ -280,6 +305,7 @@ class HandRaiseSupervisor extends LitElement {
     this._init();
     this._tickHandle = setInterval(() => {
       this._now = Date.now();
+      this._checkEscalation();
     }, 1000);
   }
 
@@ -429,6 +455,27 @@ class HandRaiseSupervisor extends LitElement {
     return `${m}:${s}`;
   }
 
+  _isEscalated(request) {
+    if (!request || request.status !== 'active') return false;
+    const elapsedSec = (this._now - new Date(request.raisedAt).getTime()) / 1000;
+    return elapsedSec >= this.slaThresholdSeconds;
+  }
+
+  _checkEscalation() {
+    const oldest = [...this._activeRequests].sort((a, b) => new Date(a.raisedAt) - new Date(b.raisedAt))[0];
+    if (!this._isEscalated(oldest)) {
+      this._escalation.requestId = null;
+      return;
+    }
+    if (this._escalation.requestId !== oldest.id) {
+      this._escalation = { requestId: oldest.id, lastFiredAt: this._now };
+      if (this._soundEnabled) this._playChime();
+    } else if (this._now - this._escalation.lastFiredAt >= ESCALATION_CHIME_INTERVAL_MS) {
+      this._escalation.lastFiredAt = this._now;
+      if (this._soundEnabled) this._playChime();
+    }
+  }
+
   _initials(name) {
     return (name || '?')
       .split(' ')
@@ -565,8 +612,9 @@ class HandRaiseSupervisor extends LitElement {
 
   _renderCard(request) {
     const isHistory = this._tab === 'history';
+    const escalated = !isHistory && this._isEscalated(request);
     return html`
-      <div class="card">
+      <div class="card ${escalated ? 'escalated' : ''}">
         <div class="avatar">${this._initials(request.agentName)}</div>
         <div class="card-main">
           <div class="card-top">
@@ -577,6 +625,7 @@ class HandRaiseSupervisor extends LitElement {
             ${!isHistory
               ? html`<span class="status-pill ${request.status}">${request.status}</span>`
               : ''}
+            ${escalated ? html`<span class="sla-badge">SLA</span>` : ''}
           </div>
           ${request.note ? html`<div class="note-text">${request.note}</div>` : ''}
           <div class="card-meta-row">
