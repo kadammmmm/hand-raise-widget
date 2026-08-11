@@ -19,6 +19,10 @@ export function connectSSE(url, handlers) {
     handlers.onLowered?.(JSON.parse(e.data));
   });
 
+  eventSource.addEventListener(SSE_EVENTS.MESSAGE, (e) => {
+    handlers.onMessage?.(JSON.parse(e.data));
+  });
+
   eventSource.onopen = () => {
     handlers.onOpen?.();
   };

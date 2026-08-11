@@ -8,7 +8,8 @@ const SSE_EVENTS = {
   NEW: 'hand-raise:new',
   LOWERED: 'hand-raise:lowered',
   ACKNOWLEDGED: 'hand-raise:acknowledged',
-  RESOLVED: 'hand-raise:resolved'
+  RESOLVED: 'hand-raise:resolved',
+  MESSAGE: 'hand-raise:message'
 };
 
 router.get('/health', (req, res) => {
@@ -72,6 +73,23 @@ router.patch('/hand-raise/:id/resolve', (req, res) => {
   sse.broadcastToTeam(request.teamId, SSE_EVENTS.RESOLVED, request);
   sse.notifyAgent(request.agentId, SSE_EVENTS.RESOLVED, request);
   res.json(request);
+});
+
+router.post('/hand-raise/:id/message', (req, res) => {
+  const { supervisorId, supervisorName, message } = req.body || {};
+
+  if (!message || !message.trim()) {
+    return res.status(400).json({ error: 'message is required' });
+  }
+
+  const result = store.addMessage(req.params.id, { supervisorId, supervisorName, message });
+  if (!result) return res.status(404).json({ error: 'Request not found' });
+
+  const { request, entry } = result;
+  const payload = { requestId: request.id, message: entry };
+  sse.broadcastToTeam(request.teamId, SSE_EVENTS.MESSAGE, payload);
+  sse.notifyAgent(request.agentId, SSE_EVENTS.MESSAGE, payload);
+  res.status(201).json(entry);
 });
 
 router.get('/hand-raise/stream', (req, res) => {

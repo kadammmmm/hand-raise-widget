@@ -88,6 +88,27 @@ const agentStyles = css`
     background: var(--surface-color);
     font-weight: 600;
   }
+
+  .message-log {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 160px;
+    overflow-y: auto;
+  }
+
+  .message-item {
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: var(--surface-color);
+    font-size: 12px;
+  }
+
+  .message-meta {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
 `;
 
 // advancedHeader-only widget: a compact hand icon that lives in the
@@ -110,6 +131,8 @@ class HandRaiseAgent extends LitElement {
     _elapsedSeconds: { state: true },
     _acknowledgedBy: { state: true },
     _lastMessage: { state: true },
+    _messages: { state: true },
+    _unreadCount: { state: true },
     _submitting: { state: true },
     _error: { state: true }
   };
@@ -132,6 +155,8 @@ class HandRaiseAgent extends LitElement {
     this._elapsedSeconds = 0;
     this._acknowledgedBy = null;
     this._lastMessage = '';
+    this._messages = [];
+    this._unreadCount = 0;
     this._submitting = false;
     this._error = '';
     this._timerHandle = null;
@@ -182,7 +207,8 @@ class HandRaiseAgent extends LitElement {
     const url = `${this.backendUrl}/hand-raise/stream/agent?agentId=${encodeURIComponent(this._agent.id)}`;
     this._eventSource = connectSSE(url, {
       onAcknowledged: (data) => this._handleAcknowledged(data),
-      onResolved: (data) => this._handleResolved(data)
+      onResolved: (data) => this._handleResolved(data),
+      onMessage: (data) => this._handleMessage(data)
     });
   }
 
@@ -219,6 +245,7 @@ class HandRaiseAgent extends LitElement {
     const trigger = this.shadowRoot.querySelector('.header-trigger');
     this._panelPosition = anchorBelow(trigger, 320);
     this._panelOpen = true;
+    this._unreadCount = 0;
     this._error = '';
   }
 
@@ -293,10 +320,18 @@ class HandRaiseAgent extends LitElement {
     setTimeout(() => this._resetState(), 3000);
   }
 
+  _handleMessage(data) {
+    if (data.requestId !== this._requestId) return;
+    this._messages = [...this._messages, data.message].slice(-10);
+    if (!this._panelOpen) this._unreadCount += 1;
+  }
+
   _resetState() {
     this._status = HAND_RAISE_STATUS.RESOLVED;
     this._requestId = null;
     this._acknowledgedBy = null;
+    this._messages = [];
+    this._unreadCount = 0;
     this._panelOpen = false;
     this._stopTimer();
     this._elapsedSeconds = 0;
@@ -329,7 +364,10 @@ class HandRaiseAgent extends LitElement {
 
     return html`
       <button class="header-trigger" @click=${(e) => this._toggleTrigger(e)}>
-        <span class="icon-badge ${iconCls}">✋</span>
+        <span class="icon-badge ${iconCls}">
+          ✋
+          ${this._unreadCount > 0 ? html`<span class="count-badge">${this._unreadCount}</span>` : ''}
+        </span>
         <span class="label">${isRaised ? 'Hand Raised' : 'Raise Hand'}</span>
         ${isRaised ? html`<span class="timer-inline">${this._formatElapsed()}</span>` : ''}
       </button>
@@ -364,6 +402,20 @@ class HandRaiseAgent extends LitElement {
           ? `Supervisor ${this._acknowledgedBy || ''} is reviewing your request.`
           : 'Waiting for a supervisor to respond.'}
       </div>
+      ${this._messages.length
+        ? html`
+            <div class="message-log">
+              ${this._messages.map(
+                (m) => html`
+                  <div class="message-item">
+                    ${m.message}
+                    <div class="message-meta">${m.supervisorName} · ${new Date(m.sentAt).toLocaleTimeString()}</div>
+                  </div>
+                `
+              )}
+            </div>
+          `
+        : ''}
       <div class="panel-actions">
         <button class="secondary" ?disabled=${this._submitting} @click=${() => this._lowerHand()}>Lower Hand</button>
       </div>

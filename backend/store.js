@@ -29,7 +29,8 @@ function createRequest(payload) {
     acknowledgedBy: null,
     raisedAt: now,
     acknowledgedAt: null,
-    resolvedAt: null
+    resolvedAt: null,
+    messages: []
   };
 
   active.set(request.id, request);
@@ -69,6 +70,21 @@ function resolve(id, supervisorId, supervisorName) {
   return request;
 }
 
+function addMessage(id, { supervisorId, supervisorName, message }) {
+  const request = active.get(id);
+  if (!request) return null;
+
+  const entry = {
+    id: uuidv4(),
+    supervisorId,
+    supervisorName: supervisorName || supervisorId,
+    message: (message || '').slice(0, 280),
+    sentAt: new Date().toISOString()
+  };
+  request.messages.push(entry);
+  return { request, entry };
+}
+
 function pruneHistory() {
   const cutoff = Date.now() - HISTORY_TTL_HOURS * 60 * 60 * 1000;
   while (history.length && new Date(history[history.length - 1].resolvedAt).getTime() < cutoff) {
@@ -95,6 +111,7 @@ module.exports = {
   lowerByAgent,
   acknowledge,
   resolve,
+  addMessage,
   getActive,
   getHistory,
   getById

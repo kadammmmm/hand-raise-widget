@@ -149,10 +149,20 @@ DELETE /api/hand-raise/:agentId
 GET    /api/hand-raise[?teamId=xyz]
 PATCH  /api/hand-raise/:id/acknowledge
 PATCH  /api/hand-raise/:id/resolve
+POST   /api/hand-raise/:id/message
 GET    /api/hand-raise/history[?teamId=xyz]
 GET    /api/hand-raise/stream[?teamId=xyz]        (SSE, supervisor)
 GET    /api/hand-raise/stream/agent?agentId=xyz   (SSE, agent)
 ```
+
+## Supervisor-to-Agent Messaging
+
+A supervisor can send a short message to the agent on a specific request via the Nav Panel dashboard's "Message" button on each card — a compose box with a quick-reply dropdown (`MESSAGE_TEMPLATES` in `src/shared/constants.js`) that prefills an editable text field, plus a free-text option, capped at `MESSAGE_MAX_LENGTH` (280 chars).
+
+- `POST /hand-raise/:id/message` (body: `supervisorId`, `supervisorName`, `message`) appends the message to that request's in-memory `messages` array and broadcasts `hand-raise:message` to both the specific agent (`notifyAgent`) and the team's supervisors (`broadcastToTeam`), same delivery pattern as acknowledge/resolve.
+- The agent's header widget shows an unread-count badge on the hand icon while the panel is closed, and a scrollable chat-style log (newest at the bottom, capped to the last 10) once opened. Opening the panel clears the unread count.
+- Messages don't change `status` or reset the SLA clock — sending one is a side channel, not an acknowledgment. A supervisor still needs to explicitly Acknowledge to stop the escalation chime.
+- Intentionally **not** built into the advancedHeader alert widget — composing a message needs more room than that widget's inline-expansion footprint has, consistent with the header-widget-is-for-triage-only / Nav-Panel-is-for-management split described above.
 
 ## Debug Helper
 

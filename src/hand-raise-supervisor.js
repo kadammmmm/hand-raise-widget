@@ -8,7 +8,9 @@ import {
   HISTORY_WINDOW_HOURS,
   DEFAULT_SLA_THRESHOLD_SECONDS,
   ESCALATION_CHIME_INTERVAL_MS,
-  CRITICAL_CHIME_INTERVAL_MS
+  CRITICAL_CHIME_INTERVAL_MS,
+  MESSAGE_TEMPLATES,
+  MESSAGE_MAX_LENGTH
 } from './shared/constants.js';
 import { connectSSE } from './shared/sse-client.js';
 
@@ -36,6 +38,8 @@ class HandRaiseSupervisor extends LitElement {
     _filterChannel: { state: true },
     _sortMode: { state: true },
     _soundEnabled: { state: true },
+    _composingId: { state: true },
+    _messageText: { state: true },
     _now: { state: true },
     _connected: { state: true },
     _error: { state: true }
@@ -289,6 +293,33 @@ class HandRaiseSupervisor extends LitElement {
       background: var(--danger-color);
       color: #fff;
     }
+
+    .message-preview {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    .compose-box {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 6px;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-color);
+    }
+
+    .compose-box select {
+      font-size: 11px;
+    }
+
+    .compose-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+    }
   `];
 
   constructor() {
@@ -307,6 +338,8 @@ class HandRaiseSupervisor extends LitElement {
     this._filterChannel = '';
     this._sortMode = 'priority';
     this._soundEnabled = true;
+    this._composingId = null;
+    this._messageText = '';
     this._now = Date.now();
     this._connected = false;
     this._error = '';
@@ -380,7 +413,8 @@ class HandRaiseSupervisor extends LitElement {
       onNew: (data) => this._handleNew(data),
       onLowered: (data) => this._handleLowered(data),
       onAcknowledged: (data) => this._handleAcknowledged(data),
-      onResolved: (data) => this._handleResolved(data)
+      onResolved: (data) => this._handleResolved(data),
+      onMessage: (data) => this._handleMessageEvent(data)
     });
   }
 
@@ -400,6 +434,12 @@ class HandRaiseSupervisor extends LitElement {
   _handleResolved(data) {
     this._activeRequests = this._activeRequests.filter((r) => r.id !== data.id);
     if (this._tab === 'history') this._loadHistory();
+  }
+
+  _handleMessageEvent(data) {
+    this._activeRequests = this._activeRequests.map((r) =>
+      r.id === data.requestId ? { ...r, messages: [...(r.messages || []), data.message] } : r
+    );
   }
 
   _notify(request) {
@@ -456,6 +496,35 @@ class HandRaiseSupervisor extends LitElement {
       });
     } catch (err) {
       this._error = err.message || 'Failed to resolve request';
+    }
+  }
+
+  _openCompose(request) {
+    this._composingId = request.id;
+    this._messageText = '';
+  }
+
+  _closeCompose() {
+    this._composingId = null;
+    this._messageText = '';
+  }
+
+  async _sendMessage(request) {
+    const message = this._messageText.trim();
+    if (!message) return;
+    try {
+      await fetch(`${this.backendUrl}/hand-raise/${request.id}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supervisorId: this._supervisor.id,
+          supervisorName: this._supervisor.name,
+          message: message.slice(0, MESSAGE_MAX_LENGTH)
+        })
+      });
+      this._closeCompose();
+    } catch (err) {
+      this._error = err.message || 'Failed to send message';
     }
   }
 
@@ -694,6 +763,14 @@ class HandRaiseSupervisor extends LitElement {
               : ''}
             ${isHistory && request.acknowledgedBy ? html`<span>By: ${request.acknowledgedBy}</span>` : ''}
           </div>
+          ${!isHistory && this._composingId !== request.id && request.messages?.length
+            ? html`
+                <div class="message-preview">
+                  You: "${request.messages[request.messages.length - 1].message}"
+                </div>
+              `
+            : ''}
+          ${!isHistory && this._composingId === request.id ? this._renderCompose(request) : ''}
         </div>
         ${!isHistory
           ? html`
@@ -701,10 +778,40 @@ class HandRaiseSupervisor extends LitElement {
                 ${request.status === 'active'
                   ? html`<button class="primary" @click=${() => this._acknowledge(request)}>Acknowledge</button>`
                   : ''}
+                <button class="secondary" @click=${() => this._openCompose(request)}>Message</button>
                 <button class="secondary" @click=${() => this._resolve(request)}>Resolve</button>
               </div>
             `
           : ''}
+      </div>
+    `;
+  }
+
+  _renderCompose(request) {
+    return html`
+      <div class="compose-box">
+        <select
+          @change=${(e) => {
+            if (e.target.value) this._messageText = e.target.value;
+            e.target.value = '';
+          }}
+        >
+          <option value="">Quick reply...</option>
+          ${MESSAGE_TEMPLATES.map((t) => html`<option value=${t}>${t}</option>`)}
+        </select>
+        <textarea
+          rows="2"
+          maxlength=${MESSAGE_MAX_LENGTH}
+          placeholder="Message to ${request.agentName}"
+          .value=${this._messageText}
+          @input=${(e) => (this._messageText = e.target.value)}
+        ></textarea>
+        <div class="compose-actions">
+          <button class="secondary" @click=${() => this._closeCompose()}>Cancel</button>
+          <button class="primary" ?disabled=${!this._messageText.trim()} @click=${() => this._sendMessage(request)}>
+            Send
+          </button>
+        </div>
       </div>
     `;
   }
