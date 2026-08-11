@@ -309,7 +309,33 @@
     font-weight: 600;
     margin-bottom: 2px;
   }
-`;de.Desktop.config.init(),window.handRaiseService=de.Desktop.agentContact?.SERVICE;const fe=Object.fromEntries([{value:"escalation",label:"Escalation Needed",icon:"icon-escalate"},{value:"billing",label:"Billing Question",icon:"icon-currency"},{value:"technical",label:"Technical Issue",icon:"icon-settings"},{value:"upset_customer",label:"Customer Upset",icon:"icon-warning"},{value:"policy",label:"Policy Clarification",icon:"icon-document"},{value:"other",label:"Other",icon:"icon-help-circle"}].map(e=>[e.value,e.label])),pe=s`
+
+  .priority-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+  }
+
+  .priority-dot.normal { background: var(--text-muted); }
+  .priority-dot.urgent { background: var(--warning-color); }
+  .priority-dot.critical { background: var(--danger-color); }
+
+  .priority-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .priority-badge.critical {
+    color: var(--danger-color);
+  }
+`,fe=[{value:"normal",label:"Normal",weight:0},{value:"urgent",label:"Urgent",weight:1},{value:"critical",label:"Critical",weight:2}];de.Desktop.config.init(),window.handRaiseService=de.Desktop.agentContact?.SERVICE;const pe=Object.fromEntries([{value:"escalation",label:"Escalation Needed",icon:"icon-escalate"},{value:"billing",label:"Billing Question",icon:"icon-currency"},{value:"technical",label:"Technical Issue",icon:"icon-settings"},{value:"upset_customer",label:"Customer Upset",icon:"icon-warning"},{value:"policy",label:"Policy Clarification",icon:"icon-document"},{value:"other",label:"Other",icon:"icon-help-circle"}].map(e=>[e.value,e.label])),ge=Object.fromEntries(fe.map(e=>[e.value,e.label])),ve=Object.fromEntries(fe.map(e=>[e.value,e.weight])),me=s`
   :host {
     display: inline-flex;
   }
@@ -379,7 +405,7 @@
     font-size: 11px;
     padding: 3px 8px;
   }
-`;customElements.define("hand-raise-supervisor-alert",class extends ue{static properties={darkmode:{type:String,reflect:!0},backendUrl:{type:String,attribute:"backend-url"},accessToken:{type:String,attribute:"access-token"},slaThresholdSeconds:{type:Number,attribute:"sla-threshold-seconds"},_supervisor:{state:!0},_activeRequests:{state:!0},_connected:{state:!0},_now:{state:!0}};static styles=[he,pe];constructor(){super(),this.darkmode="false",this.backendUrl="",this.accessToken="",this.slaThresholdSeconds=90,this._supervisor=null,this._activeRequests=[],this._connected=!1,this._now=Date.now(),this._eventSource=null,this._tickHandle=null,this._audioCtx=null,this._escalation={requestId:null,lastFiredAt:0}}connectedCallback(){super.connectedCallback(),this._init(),this._tickHandle=setInterval(()=>{this._now=Date.now(),this._checkEscalation()},1e3)}disconnectedCallback(){super.disconnectedCallback(),this._eventSource?.close(),this._tickHandle&&clearInterval(this._tickHandle)}async _init(){try{const e=await(de.Desktop.agentContact?.SERVICE?.webex?.fetchPersonData?.("me"));this._supervisor={id:e?.id||"unknown",name:e?.displayName||e?.name||"Supervisor"}}catch{this._supervisor={id:"unknown",name:"Supervisor"}}await this._loadActive(),this._connectStream()}async _loadActive(){try{const e=await fetch(`${this.backendUrl}/hand-raise`);e.ok&&(this._activeRequests=await e.json())}catch{}}_connectStream(){this.backendUrl&&(this._eventSource=function(e,t){const n=new EventSource(e);return n.addEventListener("hand-raise:new",e=>{t.onNew?.(JSON.parse(e.data))}),n.addEventListener("hand-raise:acknowledged",e=>{t.onAcknowledged?.(JSON.parse(e.data))}),n.addEventListener("hand-raise:resolved",e=>{t.onResolved?.(JSON.parse(e.data))}),n.addEventListener("hand-raise:lowered",e=>{t.onLowered?.(JSON.parse(e.data))}),n.onopen=()=>{t.onOpen?.()},n.onerror=()=>{t.onError?.()},n}(`${this.backendUrl}/hand-raise/stream`,{onOpen:()=>this._connected=!0,onError:()=>this._connected=!1,onNew:e=>this._handleNew(e),onLowered:e=>this._removeRequest(e.id),onAcknowledged:e=>this._patchRequest(e),onResolved:e=>this._removeRequest(e.id)}))}_handleNew(e){this._activeRequests=[...this._activeRequests,e],this._notify(e)}_patchRequest(e){this._activeRequests=this._activeRequests.map(t=>t.id===e.id?{...t,...e}:t)}_removeRequest(e){this._activeRequests=this._activeRequests.filter(t=>t.id!==e)}_notify(e){"undefined"!=typeof Notification&&"granted"===Notification.permission&&new Notification("Hand Raise Request",{body:`${e.agentName} needs assistance (${fe[e.reason]||e.reason})`}),this._playChime()}_requestNotificationPermission(){"undefined"!=typeof Notification&&"default"===Notification.permission&&Notification.requestPermission()}_playChime(){try{this._audioCtx||(this._audioCtx=new(window.AudioContext||window.webkitAudioContext));const e=this._audioCtx,t=e.createOscillator(),n=e.createGain();t.type="sine",t.frequency.value=880,n.gain.setValueAtTime(.15,e.currentTime),n.gain.exponentialRampToValueAtTime(.001,e.currentTime+.4),t.connect(n).connect(e.destination),t.start(),t.stop(e.currentTime+.4)}catch{}}async _acknowledge(e){try{await fetch(`${this.backendUrl}/hand-raise/${e.id}/acknowledge`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({supervisorId:this._supervisor.id,supervisorName:this._supervisor.name})})}catch{}}async _resolve(e){try{await fetch(`${this.backendUrl}/hand-raise/${e.id}/resolve`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({supervisorId:this._supervisor.id,supervisorName:this._supervisor.name})})}catch{}}_oldestSorted(){return[...this._activeRequests].sort((e,t)=>new Date(e.raisedAt)-new Date(t.raisedAt))}_isEscalated(e){return!(!e||"active"!==e.status)&&(this._now-new Date(e.raisedAt).getTime())/1e3>=this.slaThresholdSeconds}_checkEscalation(){const e=this._oldestSorted()[0];this._isEscalated(e)?this._escalation.requestId!==e.id?(this._escalation={requestId:e.id,lastFiredAt:this._now},this._playChime()):this._now-this._escalation.lastFiredAt>=3e4&&(this._escalation.lastFiredAt=this._now,this._playChime()):this._escalation.requestId=null}render(){const e=this._oldestSorted(),t=e.length;if(0===t)return B`
+`;customElements.define("hand-raise-supervisor-alert",class extends ue{static properties={darkmode:{type:String,reflect:!0},backendUrl:{type:String,attribute:"backend-url"},accessToken:{type:String,attribute:"access-token"},slaThresholdSeconds:{type:Number,attribute:"sla-threshold-seconds"},_supervisor:{state:!0},_activeRequests:{state:!0},_connected:{state:!0},_now:{state:!0}};static styles=[he,me];constructor(){super(),this.darkmode="false",this.backendUrl="",this.accessToken="",this.slaThresholdSeconds=90,this._supervisor=null,this._activeRequests=[],this._connected=!1,this._now=Date.now(),this._eventSource=null,this._tickHandle=null,this._audioCtx=null,this._escalation={requestId:null,lastFiredAt:0}}connectedCallback(){super.connectedCallback(),this._init(),this._tickHandle=setInterval(()=>{this._now=Date.now(),this._checkEscalation()},1e3)}disconnectedCallback(){super.disconnectedCallback(),this._eventSource?.close(),this._tickHandle&&clearInterval(this._tickHandle)}async _init(){try{const e=await(de.Desktop.agentContact?.SERVICE?.webex?.fetchPersonData?.("me"));this._supervisor={id:e?.id||"unknown",name:e?.displayName||e?.name||"Supervisor"}}catch{this._supervisor={id:"unknown",name:"Supervisor"}}await this._loadActive(),this._connectStream()}async _loadActive(){try{const e=await fetch(`${this.backendUrl}/hand-raise`);e.ok&&(this._activeRequests=await e.json())}catch{}}_connectStream(){this.backendUrl&&(this._eventSource=function(e,t){const n=new EventSource(e);return n.addEventListener("hand-raise:new",e=>{t.onNew?.(JSON.parse(e.data))}),n.addEventListener("hand-raise:acknowledged",e=>{t.onAcknowledged?.(JSON.parse(e.data))}),n.addEventListener("hand-raise:resolved",e=>{t.onResolved?.(JSON.parse(e.data))}),n.addEventListener("hand-raise:lowered",e=>{t.onLowered?.(JSON.parse(e.data))}),n.onopen=()=>{t.onOpen?.()},n.onerror=()=>{t.onError?.()},n}(`${this.backendUrl}/hand-raise/stream`,{onOpen:()=>this._connected=!0,onError:()=>this._connected=!1,onNew:e=>this._handleNew(e),onLowered:e=>this._removeRequest(e.id),onAcknowledged:e=>this._patchRequest(e),onResolved:e=>this._removeRequest(e.id)}))}_handleNew(e){this._activeRequests=[...this._activeRequests,e],this._notify(e)}_patchRequest(e){this._activeRequests=this._activeRequests.map(t=>t.id===e.id?{...t,...e}:t)}_removeRequest(e){this._activeRequests=this._activeRequests.filter(t=>t.id!==e)}_notify(e){"undefined"!=typeof Notification&&"granted"===Notification.permission&&new Notification("Hand Raise Request",{body:`${e.agentName} needs assistance (${pe[e.reason]||e.reason})`}),this._playChime()}_requestNotificationPermission(){"undefined"!=typeof Notification&&"default"===Notification.permission&&Notification.requestPermission()}_playChime(){try{this._audioCtx||(this._audioCtx=new(window.AudioContext||window.webkitAudioContext));const e=this._audioCtx,t=e.createOscillator(),n=e.createGain();t.type="sine",t.frequency.value=880,n.gain.setValueAtTime(.15,e.currentTime),n.gain.exponentialRampToValueAtTime(.001,e.currentTime+.4),t.connect(n).connect(e.destination),t.start(),t.stop(e.currentTime+.4)}catch{}}async _acknowledge(e){try{await fetch(`${this.backendUrl}/hand-raise/${e.id}/acknowledge`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({supervisorId:this._supervisor.id,supervisorName:this._supervisor.name})})}catch{}}async _resolve(e){try{await fetch(`${this.backendUrl}/hand-raise/${e.id}/resolve`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({supervisorId:this._supervisor.id,supervisorName:this._supervisor.name})})}catch{}}_prioritySorted(){return[...this._activeRequests].sort((e,t)=>{const n=(ve[t.priority]??0)-(ve[e.priority]??0);return 0!==n?n:new Date(e.raisedAt)-new Date(t.raisedAt)})}_isEscalated(e){return!(!e||"active"!==e.status)&&("critical"===e.priority||(this._now-new Date(e.raisedAt).getTime())/1e3>=this.slaThresholdSeconds)}_chimeIntervalFor(e){return"critical"===e.priority?15e3:3e4}_checkEscalation(){const e=this._prioritySorted()[0];this._isEscalated(e)?this._escalation.requestId!==e.id?(this._escalation={requestId:e.id,lastFiredAt:this._now},this._playChime()):this._now-this._escalation.lastFiredAt>=this._chimeIntervalFor(e)&&(this._escalation.lastFiredAt=this._now,this._playChime()):this._escalation.requestId=null}render(){const e=this._prioritySorted(),t=e.length;if(0===t)return B`
         <button class="header-trigger" @click=${()=>this._requestNotificationPermission()}>
           <span class="icon-badge">✋</span>
           <span class="label">Hand Raise</span>
@@ -392,9 +418,15 @@
         </span>
         <span class="summary">
           <span class="agent-name">${n.agentName}</span>
-          <span class="reason">${fe[n.reason]||n.reason}</span>
+          <span class="reason">${pe[n.reason]||n.reason}</span>
         </span>
-        ${this._isEscalated(n)?B`<span class="sla-badge">SLA</span>`:""}
+        ${n.priority&&"normal"!==n.priority?B`
+              <span class="priority-badge ${n.priority}">
+                <span class="priority-dot ${n.priority}"></span>
+                ${ge[n.priority]||n.priority}
+              </span>
+            `:""}
+        ${this._isEscalated(n)&&"critical"!==n.priority?B`<span class="sla-badge">SLA</span>`:""}
         <div class="row-actions">
           ${"active"===n.status?B`<button class="primary" @click=${()=>this._acknowledge(n)}>Acknowledge</button>`:B`<span class="status-pill acknowledged">acknowledged</span>`}
           <button class="secondary" @click=${()=>this._resolve(n)}>Resolve</button>

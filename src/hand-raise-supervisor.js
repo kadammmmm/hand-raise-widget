@@ -3,10 +3,12 @@ import { Desktop } from '@wxcc-desktop/sdk';
 import { sharedStyles } from './shared/styles.js';
 import {
   HAND_RAISE_REASONS,
+  HAND_RAISE_PRIORITIES,
   CHANNEL_ICONS,
   HISTORY_WINDOW_HOURS,
   DEFAULT_SLA_THRESHOLD_SECONDS,
-  ESCALATION_CHIME_INTERVAL_MS
+  ESCALATION_CHIME_INTERVAL_MS,
+  CRITICAL_CHIME_INTERVAL_MS
 } from './shared/constants.js';
 import { connectSSE } from './shared/sse-client.js';
 
@@ -14,6 +16,8 @@ Desktop.config.init();
 window.handRaiseService = Desktop.agentContact?.SERVICE;
 
 const REASON_LABELS = Object.fromEntries(HAND_RAISE_REASONS.map((r) => [r.value, r.label]));
+const PRIORITY_LABELS = Object.fromEntries(HAND_RAISE_PRIORITIES.map((p) => [p.value, p.label]));
+const PRIORITY_WEIGHTS = Object.fromEntries(HAND_RAISE_PRIORITIES.map((p) => [p.value, p.weight]));
 
 class HandRaiseSupervisor extends LitElement {
   static properties = {
@@ -30,6 +34,7 @@ class HandRaiseSupervisor extends LitElement {
     _filterTeam: { state: true },
     _filterReason: { state: true },
     _filterChannel: { state: true },
+    _sortMode: { state: true },
     _soundEnabled: { state: true },
     _now: { state: true },
     _connected: { state: true },
@@ -81,6 +86,16 @@ class HandRaiseSupervisor extends LitElement {
       gap: 6px;
       font-size: 12px;
       color: var(--text-muted);
+    }
+
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .toolbar-right select {
+      width: auto;
     }
 
     .cards {
@@ -290,6 +305,7 @@ class HandRaiseSupervisor extends LitElement {
     this._filterTeam = '';
     this._filterReason = '';
     this._filterChannel = '';
+    this._sortMode = 'priority';
     this._soundEnabled = true;
     this._now = Date.now();
     this._connected = false;
@@ -457,20 +473,30 @@ class HandRaiseSupervisor extends LitElement {
 
   _isEscalated(request) {
     if (!request || request.status !== 'active') return false;
+    if (request.priority === 'critical') return true;
     const elapsedSec = (this._now - new Date(request.raisedAt).getTime()) / 1000;
     return elapsedSec >= this.slaThresholdSeconds;
   }
 
+  _chimeIntervalFor(request) {
+    return request.priority === 'critical' ? CRITICAL_CHIME_INTERVAL_MS : ESCALATION_CHIME_INTERVAL_MS;
+  }
+
   _checkEscalation() {
-    const oldest = [...this._activeRequests].sort((a, b) => new Date(a.raisedAt) - new Date(b.raisedAt))[0];
-    if (!this._isEscalated(oldest)) {
+    const sorted = [...this._activeRequests].sort((a, b) => {
+      const weightDiff = (PRIORITY_WEIGHTS[b.priority] ?? 0) - (PRIORITY_WEIGHTS[a.priority] ?? 0);
+      if (weightDiff !== 0) return weightDiff;
+      return new Date(a.raisedAt) - new Date(b.raisedAt);
+    });
+    const top = sorted[0];
+    if (!this._isEscalated(top)) {
       this._escalation.requestId = null;
       return;
     }
-    if (this._escalation.requestId !== oldest.id) {
-      this._escalation = { requestId: oldest.id, lastFiredAt: this._now };
+    if (this._escalation.requestId !== top.id) {
+      this._escalation = { requestId: top.id, lastFiredAt: this._now };
       if (this._soundEnabled) this._playChime();
-    } else if (this._now - this._escalation.lastFiredAt >= ESCALATION_CHIME_INTERVAL_MS) {
+    } else if (this._now - this._escalation.lastFiredAt >= this._chimeIntervalFor(top)) {
       this._escalation.lastFiredAt = this._now;
       if (this._soundEnabled) this._playChime();
     }
@@ -489,7 +515,13 @@ class HandRaiseSupervisor extends LitElement {
     return this._activeRequests
       .filter((r) => !this._filterReason || r.reason === this._filterReason)
       .filter((r) => !this._filterChannel || r.channelType === this._filterChannel)
-      .sort((a, b) => new Date(a.raisedAt) - new Date(b.raisedAt));
+      .sort((a, b) => {
+        if (this._sortMode === 'priority') {
+          const weightDiff = (PRIORITY_WEIGHTS[b.priority] ?? 0) - (PRIORITY_WEIGHTS[a.priority] ?? 0);
+          if (weightDiff !== 0) return weightDiff;
+        }
+        return new Date(a.raisedAt) - new Date(b.raisedAt);
+      });
   }
 
   _groupedByTeam(requests) {
@@ -537,17 +569,23 @@ class HandRaiseSupervisor extends LitElement {
             History (${HISTORY_WINDOW_HOURS}h)
           </button>
         </div>
-        <label class="sound-toggle">
-          <input
-            type="checkbox"
-            .checked=${this._soundEnabled}
-            @change=${(e) => {
-              this._soundEnabled = e.target.checked;
-              this._requestNotificationPermission();
-            }}
-          />
-          Sound
-        </label>
+        <div class="toolbar-right">
+          <select @change=${(e) => (this._sortMode = e.target.value)}>
+            <option value="priority" ?selected=${this._sortMode === 'priority'}>Sort: Priority</option>
+            <option value="time" ?selected=${this._sortMode === 'time'}>Sort: Oldest</option>
+          </select>
+          <label class="sound-toggle">
+            <input
+              type="checkbox"
+              .checked=${this._soundEnabled}
+              @change=${(e) => {
+                this._soundEnabled = e.target.checked;
+                this._requestNotificationPermission();
+              }}
+            />
+            Sound
+          </label>
+        </div>
       </div>
 
       <div class="filters">
@@ -622,10 +660,18 @@ class HandRaiseSupervisor extends LitElement {
             <span class="team-name">${request.teamName}</span>
             <span class="channel-badge">${request.channelType}</span>
             <span class="reason-badge">${REASON_LABELS[request.reason] || request.reason}</span>
+            ${request.priority && request.priority !== 'normal'
+              ? html`
+                  <span class="priority-badge ${request.priority}">
+                    <span class="priority-dot ${request.priority}"></span>
+                    ${PRIORITY_LABELS[request.priority] || request.priority}
+                  </span>
+                `
+              : ''}
             ${!isHistory
               ? html`<span class="status-pill ${request.status}">${request.status}</span>`
               : ''}
-            ${escalated ? html`<span class="sla-badge">SLA</span>` : ''}
+            ${escalated && request.priority !== 'critical' ? html`<span class="sla-badge">SLA</span>` : ''}
           </div>
           ${request.note ? html`<div class="note-text">${request.note}</div>` : ''}
           <div class="card-meta-row">

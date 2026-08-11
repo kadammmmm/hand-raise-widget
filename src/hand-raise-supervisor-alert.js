@@ -1,13 +1,21 @@
 import { LitElement, html, css } from 'lit';
 import { Desktop } from '@wxcc-desktop/sdk';
 import { sharedStyles } from './shared/styles.js';
-import { HAND_RAISE_REASONS, DEFAULT_SLA_THRESHOLD_SECONDS, ESCALATION_CHIME_INTERVAL_MS } from './shared/constants.js';
+import {
+  HAND_RAISE_REASONS,
+  HAND_RAISE_PRIORITIES,
+  DEFAULT_SLA_THRESHOLD_SECONDS,
+  ESCALATION_CHIME_INTERVAL_MS,
+  CRITICAL_CHIME_INTERVAL_MS
+} from './shared/constants.js';
 import { connectSSE } from './shared/sse-client.js';
 
 Desktop.config.init();
 window.handRaiseService = Desktop.agentContact?.SERVICE;
 
 const REASON_LABELS = Object.fromEntries(HAND_RAISE_REASONS.map((r) => [r.value, r.label]));
+const PRIORITY_LABELS = Object.fromEntries(HAND_RAISE_PRIORITIES.map((p) => [p.value, p.label]));
+const PRIORITY_WEIGHTS = Object.fromEntries(HAND_RAISE_PRIORITIES.map((p) => [p.value, p.weight]));
 
 const alertStyles = css`
   :host {
@@ -243,33 +251,45 @@ class HandRaiseSupervisorAlert extends LitElement {
     }
   }
 
-  _oldestSorted() {
-    return [...this._activeRequests].sort((a, b) => new Date(a.raisedAt) - new Date(b.raisedAt));
+  // Highest priority first (critical > urgent > normal); oldest first within
+  // the same priority. This is the "which request does the header show"
+  // ordering, distinct from the Nav Panel's separate sort options.
+  _prioritySorted() {
+    return [...this._activeRequests].sort((a, b) => {
+      const weightDiff = (PRIORITY_WEIGHTS[b.priority] ?? 0) - (PRIORITY_WEIGHTS[a.priority] ?? 0);
+      if (weightDiff !== 0) return weightDiff;
+      return new Date(a.raisedAt) - new Date(b.raisedAt);
+    });
   }
 
   _isEscalated(request) {
     if (!request || request.status !== 'active') return false;
+    if (request.priority === 'critical') return true;
     const elapsedSec = (this._now - new Date(request.raisedAt).getTime()) / 1000;
     return elapsedSec >= this.slaThresholdSeconds;
   }
 
+  _chimeIntervalFor(request) {
+    return request.priority === 'critical' ? CRITICAL_CHIME_INTERVAL_MS : ESCALATION_CHIME_INTERVAL_MS;
+  }
+
   _checkEscalation() {
-    const oldest = this._oldestSorted()[0];
-    if (!this._isEscalated(oldest)) {
+    const top = this._prioritySorted()[0];
+    if (!this._isEscalated(top)) {
       this._escalation.requestId = null;
       return;
     }
-    if (this._escalation.requestId !== oldest.id) {
-      this._escalation = { requestId: oldest.id, lastFiredAt: this._now };
+    if (this._escalation.requestId !== top.id) {
+      this._escalation = { requestId: top.id, lastFiredAt: this._now };
       this._playChime();
-    } else if (this._now - this._escalation.lastFiredAt >= ESCALATION_CHIME_INTERVAL_MS) {
+    } else if (this._now - this._escalation.lastFiredAt >= this._chimeIntervalFor(top)) {
       this._escalation.lastFiredAt = this._now;
       this._playChime();
     }
   }
 
   render() {
-    const sorted = this._oldestSorted();
+    const sorted = this._prioritySorted();
     const count = sorted.length;
 
     if (count === 0) {
@@ -281,23 +301,31 @@ class HandRaiseSupervisorAlert extends LitElement {
       `;
     }
 
-    const oldest = sorted[0];
+    const top = sorted[0];
     return html`
-      <div class="header-trigger expanded ${this._isEscalated(oldest) ? 'escalated' : ''}">
+      <div class="header-trigger expanded ${this._isEscalated(top) ? 'escalated' : ''}">
         <span class="icon-badge raised">
           ✋
           <span class="count-badge">${count}</span>
         </span>
         <span class="summary">
-          <span class="agent-name">${oldest.agentName}</span>
-          <span class="reason">${REASON_LABELS[oldest.reason] || oldest.reason}</span>
+          <span class="agent-name">${top.agentName}</span>
+          <span class="reason">${REASON_LABELS[top.reason] || top.reason}</span>
         </span>
-        ${this._isEscalated(oldest) ? html`<span class="sla-badge">SLA</span>` : ''}
+        ${top.priority && top.priority !== 'normal'
+          ? html`
+              <span class="priority-badge ${top.priority}">
+                <span class="priority-dot ${top.priority}"></span>
+                ${PRIORITY_LABELS[top.priority] || top.priority}
+              </span>
+            `
+          : ''}
+        ${this._isEscalated(top) && top.priority !== 'critical' ? html`<span class="sla-badge">SLA</span>` : ''}
         <div class="row-actions">
-          ${oldest.status === 'active'
-            ? html`<button class="primary" @click=${() => this._acknowledge(oldest)}>Acknowledge</button>`
+          ${top.status === 'active'
+            ? html`<button class="primary" @click=${() => this._acknowledge(top)}>Acknowledge</button>`
             : html`<span class="status-pill acknowledged">acknowledged</span>`}
-          <button class="secondary" @click=${() => this._resolve(oldest)}>Resolve</button>
+          <button class="secondary" @click=${() => this._resolve(top)}>Resolve</button>
         </div>
         ${count > 1 ? html`<span class="more-count">+${count - 1} more</span>` : ''}
       </div>

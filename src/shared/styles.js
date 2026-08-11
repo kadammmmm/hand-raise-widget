@@ -317,4 +317,30 @@ export const sharedStyles = css`
     font-weight: 600;
     margin-bottom: 2px;
   }
+
+  .priority-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+  }
+
+  .priority-dot.normal { background: var(--text-muted); }
+  .priority-dot.urgent { background: var(--warning-color); }
+  .priority-dot.critical { background: var(--danger-color); }
+
+  .priority-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .priority-badge.critical {
+    color: var(--danger-color);
+  }
 `;

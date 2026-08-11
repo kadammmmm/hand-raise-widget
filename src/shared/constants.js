@@ -43,3 +43,15 @@ export const HISTORY_WINDOW_HOURS = 24;
 // supervisor UI flags it (red border/pulse) and starts re-firing the chime.
 export const DEFAULT_SLA_THRESHOLD_SECONDS = 90;
 export const ESCALATION_CHIME_INTERVAL_MS = 30000;
+
+export const HAND_RAISE_PRIORITIES = [
+  { value: 'normal', label: 'Normal', weight: 0 },
+  { value: 'urgent', label: 'Urgent', weight: 1 },
+  { value: 'critical', label: 'Critical', weight: 2 }
+];
+
+export const DEFAULT_PRIORITY = 'normal';
+
+// Critical requests re-fire the chime faster than a plain SLA breach, and
+// are always treated as escalated regardless of elapsed time.
+export const CRITICAL_CHIME_INTERVAL_MS = 15000;

@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 
 const HISTORY_TTL_HOURS = Number(process.env.REQUEST_TTL_HOURS || 24);
+const VALID_PRIORITIES = new Set(['normal', 'urgent', 'critical']);
 
 const active = new Map(); // id -> request
 const activeByAgent = new Map(); // agentId -> id
@@ -22,6 +23,7 @@ function createRequest(payload) {
     interactionId: payload.interactionId || null,
     channelType: payload.channelType || 'none',
     reason: payload.reason || 'other',
+    priority: VALID_PRIORITIES.has(payload.priority) ? payload.priority : 'normal',
     note: (payload.note || '').slice(0, 280),
     status: 'active',
     acknowledgedBy: null,

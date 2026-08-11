@@ -16,7 +16,7 @@ router.get('/health', (req, res) => {
 });
 
 router.post('/hand-raise', (req, res) => {
-  const { agentId, agentName, teamId, teamName, interactionId, channelType, reason, note } = req.body || {};
+  const { agentId, agentName, teamId, teamName, interactionId, channelType, reason, priority, note } = req.body || {};
 
   if (!agentId || !agentName) {
     return res.status(400).json({ error: 'agentId and agentName are required' });
@@ -30,6 +30,7 @@ router.post('/hand-raise', (req, res) => {
     interactionId,
     channelType,
     reason,
+    priority,
     note
   });
 

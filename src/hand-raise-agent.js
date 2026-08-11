@@ -1,7 +1,13 @@
 import { LitElement, html, css } from 'lit';
 import { Desktop } from '@wxcc-desktop/sdk';
 import { sharedStyles } from './shared/styles.js';
-import { HAND_RAISE_REASONS, NOTE_MAX_LENGTH, HAND_RAISE_STATUS } from './shared/constants.js';
+import {
+  HAND_RAISE_REASONS,
+  HAND_RAISE_PRIORITIES,
+  DEFAULT_PRIORITY,
+  NOTE_MAX_LENGTH,
+  HAND_RAISE_STATUS
+} from './shared/constants.js';
 import { connectSSE } from './shared/sse-client.js';
 import { anchorBelow, createPortal, renderPortal, destroyPortal } from './shared/overlay.js';
 
@@ -54,6 +60,34 @@ const agentStyles = css`
     color: var(--danger-color);
     font-size: 12px;
   }
+
+  .priority-group {
+    display: flex;
+    gap: 6px;
+  }
+
+  .priority-option {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 6px 4px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .priority-option input {
+    margin: 0;
+  }
+
+  .priority-option.selected {
+    border-color: var(--primary-color);
+    background: var(--surface-color);
+    font-weight: 600;
+  }
 `;
 
 // advancedHeader-only widget: a compact hand icon that lives in the
@@ -69,6 +103,7 @@ class HandRaiseAgent extends LitElement {
     _status: { state: true },
     _requestId: { state: true },
     _reason: { state: true },
+    _priority: { state: true },
     _note: { state: true },
     _panelOpen: { state: true },
     _panelPosition: { state: true },
@@ -90,6 +125,7 @@ class HandRaiseAgent extends LitElement {
     this._status = HAND_RAISE_STATUS.RESOLVED;
     this._requestId = null;
     this._reason = HAND_RAISE_REASONS[0].value;
+    this._priority = DEFAULT_PRIORITY;
     this._note = '';
     this._panelOpen = false;
     this._panelPosition = { top: 0, left: 0 };
@@ -205,6 +241,7 @@ class HandRaiseAgent extends LitElement {
           interactionId: interaction.interactionId,
           channelType: interaction.channelType,
           reason: this._reason,
+          priority: this._priority,
           note: this._note.slice(0, NOTE_MAX_LENGTH)
         })
       });
@@ -340,6 +377,26 @@ class HandRaiseAgent extends LitElement {
         <select id="reason" .value=${this._reason} @change=${(e) => (this._reason = e.target.value)}>
           ${HAND_RAISE_REASONS.map((r) => html`<option value=${r.value}>${r.label}</option>`)}
         </select>
+      </div>
+      <div>
+        <label class="field-label" for="priority">Priority</label>
+        <div class="priority-group" id="priority">
+          ${HAND_RAISE_PRIORITIES.map(
+            (p) => html`
+              <label class="priority-option ${this._priority === p.value ? 'selected' : ''}">
+                <input
+                  type="radio"
+                  name="priority"
+                  value=${p.value}
+                  .checked=${this._priority === p.value}
+                  @change=${() => (this._priority = p.value)}
+                />
+                <span class="priority-dot ${p.value}"></span>
+                ${p.label}
+              </label>
+            `
+          )}
+        </div>
       </div>
       <div>
         <label class="field-label" for="note">Note (optional)</label>

@@ -122,15 +122,23 @@ Update the `script` and `backendUrl` values in each snippet to match your deploy
 
 Full step-by-step Control Hub walkthrough (where to click, how to merge into an existing layout, verification, rollback): see [DEPLOYMENT.md's Desktop Layout Configuration section](DEPLOYMENT.md#desktop-layout-configuration-control-hub).
 
+## Priority Levels
+
+Agents tag a hand raise as **Normal**, **Urgent**, or **Critical** via a radio group on the raise form (`HAND_RAISE_PRIORITIES` in `src/shared/constants.js`), sent as `priority` alongside `reason`. Defaults to `normal` if omitted — the field is optional on `POST /hand-raise` and the backend falls back silently for unrecognized values, so older widget builds calling the same API keep working.
+
+- **Nav Panel dashboard**: a "Sort: Priority / Sort: Oldest" toggle in the toolbar (defaults to Priority) sorts critical-first, then urgent, then normal, oldest-within-tier. Each card shows a colored priority dot + label when priority isn't `normal` (no badge clutter for the common case).
+- **Header alert widget**: picks the *highest-priority* active request to show inline, not just the oldest — a Critical request raised a minute ago jumps ahead of a Normal one that's been waiting ten minutes.
+- **Critical escalation**: a Critical request is treated as escalated immediately (pulsing border, same as crossing the SLA threshold) rather than waiting for `slaThresholdSeconds` to elapse, and re-fires the chime every 15 seconds (`CRITICAL_CHIME_INTERVAL_MS`) instead of the standard 30 — see SLA Escalation below for how the two mechanisms share the same underlying escalation check.
+
 ## SLA Escalation
 
-Both supervisor widgets accept an `slaThresholdSeconds` property (default `90`, set in both `docs/supervisor-header-layout.json` and `docs/supervisor-layout.json`). Once a request has been unacknowledged (`status: 'active'`) longer than that threshold:
+Both supervisor widgets accept an `slaThresholdSeconds` property (default `90`, set in both `docs/supervisor-header-layout.json` and `docs/supervisor-layout.json`). Once a request has been unacknowledged (`status: 'active'`) longer than that threshold — or is tagged Critical, regardless of elapsed time — it's treated as escalated:
 
-- The card (Nav Panel) or the expanded header control (advancedHeader alert) gets a pulsing red border and a small "SLA" badge.
-- The chime re-fires every 30 seconds (`ESCALATION_CHIME_INTERVAL_MS` in `src/shared/constants.js`) for as long as it stays unacknowledged, on top of the one-time chime that already fires when the request is first raised.
-- Only the oldest unacknowledged request drives the repeating chime — acknowledging or resolving it lets the next-oldest (if any) start its own SLA clock.
+- The card (Nav Panel) or the expanded header control (advancedHeader alert) gets a pulsing red border and a small "SLA" badge (Critical requests show their priority badge instead, to avoid stacking two red badges on the same request).
+- The chime re-fires every 30 seconds (`ESCALATION_CHIME_INTERVAL_MS`), or every 15 seconds for Critical (`CRITICAL_CHIME_INTERVAL_MS`), for as long as it stays unacknowledged, on top of the one-time chime that already fires when the request is first raised.
+- Only the single highest-priority (then oldest) unacknowledged request drives the repeating chime at a time — acknowledging or resolving it lets the next request in line start its own clock.
 
-Escalation state is computed client-side against `raisedAt` on every 1-second tick; nothing is persisted server-side, so changing the threshold takes effect immediately on the next widget load with no backend change needed. Tune it per tenant by editing the `slaThresholdSeconds` value in the two layout snippets before importing.
+Escalation state is computed client-side against `raisedAt`/`priority` on every 1-second tick; nothing is persisted server-side, so changing the threshold takes effect immediately on the next widget load with no backend change needed. Tune it per tenant by editing the `slaThresholdSeconds` value in the two layout snippets before importing.
 
 ## REST API
 
